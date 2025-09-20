@@ -8,20 +8,17 @@ use dll_syringe::{
 use serde_json::json;
 use tokio::{net::TcpListener, runtime::Builder, signal};
 
-const DEFAULT_PORT: &str = "8070";
-const USAGE_MSG: &str = "usage: injector PROC_NAME PAYLOAD_PATH [PORT]";
+mod config;
 
 enum Command {
     OffsetCmd,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut args = std::env::args();
-
-    let _ = args.next();
-    let target_name = args.next().ok_or(USAGE_MSG)?;
-    let payload_path = args.next().ok_or(USAGE_MSG)?;
-    let port = args.next().unwrap_or(DEFAULT_PORT.into());
+    let options = config::Options::load()?;
+    let target_name = options.target_name;
+    let payload_path = options.payload_path;
+    let port = options.port;
 
     if let Some(target_process) = OwnedProcess::find_first_by_name(&target_name) {
         let pid = target_process.pid()?;
@@ -39,6 +36,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!(
             "injected process base name: {}, path: {}, pid: {}.",
             base_name, exec_path, pid
+        );
+
+        println!("REST procedure call available at port {}", port,);
+        println!(
+            "available paths: {}",
+            options
+                .paths
+                .iter()
+                .map(|d| format!("procedure/{}", d.name))
+                .collect::<Vec<_>>()
+                .join(", ")
         );
 
         let syringe = Syringe::for_process(target_process);
@@ -100,7 +108,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         syringe.eject(injected_payload)?;
     } else {
         eprintln!(
-            "Program whose name contains '{}' doesn't seem to be run...",
+            "program whose name contains '{}' doesn't seem to be run...",
             target_name
         );
     }
