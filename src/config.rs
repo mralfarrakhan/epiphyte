@@ -9,16 +9,17 @@ struct Config {
     target_name: String,
     payload_path: PathBuf,
     port: Option<u16>,
-    paths: Option<Vec<Path>>,
+    paths: Option<Vec<Map>>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct Path {
+struct Map {
     pub name: String,
+    pub symbol: Option<String>,
 }
 
 impl Config {
-    fn read_config(config_path: PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
+    fn read_config(config_path: &PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
         let config = fs::read_to_string(config_path)?;
         let config: Self = toml::from_str(&config)?;
 
@@ -51,7 +52,13 @@ pub struct Options {
     pub target_name: String,
     pub payload_path: PathBuf,
     pub port: u16,
-    pub paths: Vec<Path>,
+    pub paths: Vec<Identifier>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Identifier {
+    pub name: String,
+    pub symbol: String,
 }
 
 impl Options {
@@ -62,7 +69,7 @@ impl Options {
             println!("configuration file path is not set. using 'config.toml'");
             "config.toml".into()
         });
-        let config = Config::read_config(config_path)?;
+        let config = Config::read_config(&config_path)?;
 
         let target_name = match cli.target_name {
             Some(v) => v,
@@ -83,6 +90,16 @@ impl Options {
         };
 
         let paths = config.paths.ok_or("No paths is configured")?;
+        let paths = paths
+            .iter()
+            .map(|x| {
+                let name = x.name.as_str();
+                Identifier {
+                    name: name.into(),
+                    symbol: x.symbol.clone().unwrap_or(name.into()),
+                }
+            })
+            .collect();
 
         let res = Self {
             target_name,

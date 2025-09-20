@@ -9,6 +9,7 @@ use serde_json::json;
 use tokio::{net::TcpListener, runtime::Builder, signal};
 
 mod config;
+mod payload;
 
 enum Command {
     OffsetCmd,
@@ -19,6 +20,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let target_name = options.target_name;
     let payload_path = options.payload_path;
     let port = options.port;
+    let paths = options.paths;
+
+    let procedures = payload::analyze_payload(&payload_path, paths)?;
 
     if let Some(target_process) = OwnedProcess::find_first_by_name(&target_name) {
         let pid = target_process.pid()?;
@@ -39,15 +43,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         );
 
         println!("REST procedure call available at port {}", port,);
-        println!(
-            "available paths: {}",
-            options
-                .paths
-                .iter()
-                .map(|d| format!("procedure/{}", d.name))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
 
         let syringe = Syringe::for_process(target_process);
         let injected_payload = syringe.inject(payload_path)?;
