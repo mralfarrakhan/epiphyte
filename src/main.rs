@@ -42,6 +42,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             base_name, exec_path, pid
         );
 
+        if options.is_verbose {
+            payload::print_symbol_table(&procedures)?;
+        }
+
         println!("REST procedure call available at port {}", port,);
 
         let syringe = Syringe::for_process(target_process);

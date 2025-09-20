@@ -45,6 +45,10 @@ struct Cli {
     /// default: ./config.toml
     #[arg(short, long)]
     config_path: Option<PathBuf>,
+
+    /// show additional info
+    #[arg(short, long)]
+    verbose: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -53,6 +57,7 @@ pub struct Options {
     pub payload_path: PathBuf,
     pub port: u16,
     pub paths: Vec<Identifier>,
+    pub is_verbose: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -101,11 +106,14 @@ impl Options {
             })
             .collect();
 
+        let is_verbose = cli.verbose;
+
         let res = Self {
             target_name,
             payload_path,
             port,
             paths,
+            is_verbose,
         };
 
         Ok(res)

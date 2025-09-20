@@ -1,5 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
+use cli_table::{Cell, Style, Table, print_stdout};
 use object::{File, Object};
 
 use crate::config::Identifier;
@@ -55,4 +56,36 @@ where
     }
 
     Ok(res)
+}
+
+pub fn print_symbol_table(
+    symbol: &HashMap<String, Metadata>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let t = symbol
+        .keys()
+        .map(|s| {
+            let m = &symbol[s];
+
+            let path = m.alias.clone().unwrap_or("NOT FOUND".into());
+            let address = match m.address {
+                Some(a) => format!("{:#x}", a),
+                None => "NOT FOUND".into(),
+            };
+
+            vec![path.cell(), s.cell(), address.cell()]
+        })
+        .table()
+        .title(vec![
+            "Path".cell().bold(true),
+            "Symbol".cell().bold(true),
+            "Address".cell().bold(true),
+        ])
+        .bold(true);
+
+    println!("");
+    print_stdout(t)?;
+    println!("only symbols with both path and address are accessible");
+    println!("");
+
+    Ok(())
 }
