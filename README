@@ -36,7 +36,9 @@ symbol = "_ZN6viewer9Decryptor7executeEv" # symbol can be set explicitly, usable
 
 If multiple paths is set to a same symbol, only one would be keep.
 
-Run with flag -v/--verbose to show corresponding name, symbol, and its address.
+Run with flag -v/--verbose to show corresponding name, symbol, and its address:
+- UNACCESSIBLE path is symbol found on the payload but not in config.
+- If path is defined in config but the symbol is not found in the payload, it wouldn't be listed.
 
 To do
 -----

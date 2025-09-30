@@ -48,25 +48,16 @@ where
         );
     }
 
-    for (symbol, name) in &name_map {
-        res.entry(symbol.clone()).or_insert_with(|| Metadata {
-            alias: Some(name.clone()),
-            address: None,
-        });
-    }
-
     Ok(res)
 }
 
-pub fn print_symbol_table(
-    symbol: &HashMap<String, Metadata>,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn print_symbol_table(symbol: &HashMap<String, Metadata>) -> Result<(), std::io::Error> {
     let t = symbol
         .keys()
         .map(|s| {
             let m = &symbol[s];
 
-            let path = m.alias.clone().unwrap_or("NOT FOUND".into());
+            let path = m.alias.clone().unwrap_or("UNACCESSIBLE".into());
             let address = match m.address {
                 Some(a) => format!("{:#x}", a),
                 None => "NOT FOUND".into(),
@@ -82,7 +73,6 @@ pub fn print_symbol_table(
         ])
         .bold(true);
 
-    print_stdout(t)?;
-
-    Ok(())
+    println!("Symbol Table");
+    print_stdout(t)
 }
