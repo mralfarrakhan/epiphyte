@@ -55,8 +55,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let info = async move || {
             Json(json!({
-                "base name": base_name,
-                "exec path": exec_path,
+                "base_name": base_name,
+                "exec_path": exec_path,
                 "pid": pid,
             }))
         };

@@ -3,7 +3,7 @@ Epiphyte
 
 Dll injector and remote procedure call via REST based on dll-syringe and axum.
 
-Now only works for exported function void offset(void)
+Run with flag --help/-h for more information.
 
 Usage
 -----
@@ -12,7 +12,30 @@ epiphyte TARGET_PROCESS PAYLOAD_PATH (PORT)
 
 curl http://ADDR:PORT/offset
 
-To do
------
+REST
+----
 
-- Allow dynamic procedure generation via configuration file.
+This utility expose RPC call to injected dll to REST API.
+- /info: returns info of current process base name, executable path, and pid.
+- /execute/{PATH}: trigger functions on injected payload via name (see configuration).
+
+Configuration
+-------------
+
+```toml
+target_name = "run.exe" # name of the target process
+payload_path = "./payload-x86.dll" # path to payload binary
+port = 80800 # port for REST server (default: 8070)
+
+# simple path where exported name is set as REST path
+[[paths]]
+name = "offset"
+
+# if exported name is mangled, path can be defined as
+[[paths]]
+name = "execute"
+symbol = "_ZN6viewer9Decryptor7executeEv"
+
+# if multiple paths is set to a same symbol, only one would be keep
+# run with flag -v for more information on exposed functions
+```
