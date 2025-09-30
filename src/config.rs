@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use clap::Parser;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 struct Config {
     target_name: String,
     payload_path: PathBuf,
@@ -12,7 +12,7 @@ struct Config {
     paths: Option<Vec<Map>>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
 struct Map {
     pub name: String,
     pub symbol: Option<String>,
@@ -51,7 +51,7 @@ struct Cli {
     verbose: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Options {
     pub target_name: String,
     pub payload_path: PathBuf,
@@ -71,30 +71,53 @@ impl Options {
         let cli = Cli::parse();
 
         let config_path = cli.config_path.unwrap_or_else(|| {
-            println!("configuration file path is not set. using 'config.toml'");
+            println!("configuration file path is not set. using './config.toml'");
             "config.toml".into()
         });
-        let config = Config::read_config(&config_path)?;
+        let config = match Config::read_config(&config_path) {
+            Ok(v) => v,
+            Err(_) => {
+                println!("cannot read config in '{}'", config_path.display());
+                Default::default()
+            }
+        };
 
         let target_name = match cli.target_name {
             Some(v) => v,
             None => config.target_name,
         };
 
+        if target_name.is_empty() {
+            return Err(
+                "Target name is defined in neither configuration file nor command line arguments."
+                    .into(),
+            );
+        }
+
         let payload_path = match cli.payload_path {
             Some(v) => v,
             None => config.payload_path,
         };
 
+        if payload_path.as_os_str().is_empty() {
+            return Err(
+                "Payload path is defined in neither configuration file nor command line arguments"
+                    .into(),
+            );
+        }
+
         let port = match cli.port {
             Some(v) => v,
-            None => match config.port {
-                Some(v) => v,
-                None => 8070,
-            },
+            None => config.port.unwrap_or(8070),
         };
 
-        let paths = config.paths.ok_or("No paths is configured")?;
+        let paths = match config.paths {
+            Some(v) => v,
+            None => {
+                println!("No paths defined in configuration file.");
+                Default::default()
+            }
+        };
         let paths = paths
             .iter()
             .map(|x| {
