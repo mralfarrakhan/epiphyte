@@ -82,10 +82,7 @@ pub fn print_symbol_table(
         ])
         .bold(true);
 
-    println!();
     print_stdout(t)?;
-    println!("only symbols with both path and address are accessible");
-    println!();
 
     Ok(())
 }

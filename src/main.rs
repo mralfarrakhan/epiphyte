@@ -43,7 +43,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         );
 
         if options.is_verbose {
+            println!();
             payload::print_symbol_table(&procedures)?;
+            println!("only symbols with both path and address are accessible");
+            println!();
         }
 
         println!("REST procedure call available at port {}", port,);
