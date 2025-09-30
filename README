@@ -1,41 +1,45 @@
 Epiphyte
 ========
 
-Dll injector and remote procedure call via REST based on dll-syringe and axum.
-
-Run with flag --help/-h for more information.
+Dll injector and inter-process call client via REST based on dll-syringe and axum.
 
 Usage
 -----
 
-epiphyte TARGET_PROCESS PAYLOAD_PATH (PORT)
+This utility read configuration file to define target, payload, REST port, and paths.
 
-curl http://ADDR:PORT/offset
+Configuration path can be set with -c/--config-path, otherwise it will lookup for config.toml at working directory.
 
-REST
-----
+CLI arguments override configuration values. Run with flag -h/--help for more information.
 
-This utility expose RPC call to injected dll to REST API.
+This utility expose RPC call to injected dll to REST API:
 - /info: returns info of current process base name, executable path, and pid.
 - /execute/{PATH}: trigger functions on injected payload via name (see configuration).
+
+x86 payloads only work for x86 targets, and vice versa for x86_64.
 
 Configuration
 -------------
 
 ```toml
-target_name = "run.exe" # name of the target process
+target_name = "winzip-x86.exe" # name of the target process
 payload_path = "./payload-x86.dll" # path to payload binary
 port = 80800 # port for REST server (default: 8070)
 
-# simple path where exported name is set as REST path
 [[paths]]
-name = "offset"
+name = "offset" # simple path where exported name is set as REST path
 
-# if exported name is mangled, path can be defined as
 [[paths]]
 name = "execute"
-symbol = "_ZN6viewer9Decryptor7executeEv"
-
-# if multiple paths is set to a same symbol, only one would be keep
-# run with flag -v for more information on exposed functions
+symbol = "_ZN6viewer9Decryptor7executeEv" # symbol can be set explicitly, usable if target function name is mangled
 ```
+
+If multiple paths is set to a same symbol, only one would be keep.
+
+Run with flag -v/--verbose to show corresponding name, symbol, and its address.
+
+To do
+-----
+
+- Allow return value retrieval.
+- Allow parameter passing.
