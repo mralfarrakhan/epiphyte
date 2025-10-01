@@ -6,15 +6,13 @@ Dll injector and inter-process call client via REST based on dll-syringe and axu
 Usage
 -----
 
-This utility read configuration file to define target, payload, REST port, and paths.
+This utility read configuration file to define target, payload, REST port, and paths. Configuration path can be set with -c/--config-path, otherwise it will look for config.toml in the working directory.
 
-Configuration path can be set with -c/--config-path, otherwise it will lookup for config.toml at working directory.
+CLI arguments override configuration values. Run with flag -h/--help to show available overrides.
 
-CLI arguments override configuration values. Run with flag -h/--help for more information.
-
-This utility expose RPC call to injected dll to REST API:
-- /info: returns info of current process base name, executable path, and pid.
-- /execute/{PATH}: trigger functions on injected payload via name (see configuration).
+This utility exposes RPC call for injected dll to a REST API interface:
+- GET /info: returns info of current process base name, executable path, and pid.
+- GET /execute/{PATH}: trigger functions on injected payload via name (see configuration).
 
 x86 payloads only work for x86 targets, and vice versa for x86_64.
 
@@ -22,21 +20,26 @@ Configuration
 -------------
 
 ```toml
-target_name = "winzip-x86.exe" # name of the target process
-payload_path = "./payload-x86.dll" # path to payload binary
-port = 80800 # port for REST server (default: 8070)
+# name of the target process
+target_name = "winzip-x86.exe"
 
+# path to payload binary
+payload_path = "./payload-x86.dll"
+
+# port for REST server (default: 8070)
+port = 80800 
+
+# simple path where symbol name can be set as path
 [[paths]]
-name = "offset" # simple path where exported name is set as REST path
+name = "offset" 
 
+# symbol can be set explicitly, usable if the function name is mangled
 [[paths]]
 name = "execute"
-symbol = "_ZN6viewer9Decryptor7executeEv" # symbol can be set explicitly, usable if target function name is mangled
+symbol = "_ZN6viewer9Decryptor7executeEv"
 ```
 
-If multiple paths is set to a same symbol, only one would be keep.
-
-Run with flag -v/--verbose to show corresponding name, symbol, and its address:
+If multiple paths are set to a same symbol name, only one would be kept. Run with flag -v/--verbose to show corresponding name, symbol, and its address. Some note:
 - UNACCESSIBLE path is symbol found on the payload but not in config.
 - If path is defined in config but the symbol is not found in the payload, it wouldn't be listed.
 
