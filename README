@@ -46,5 +46,8 @@ If multiple paths are set to a same symbol name, only one would be kept. Run wit
 To do
 -----
 
-- Allow return value retrieval.
-- Allow parameter passing.
+Currently, this utility expects only exported void func(void), so:
+- return value retrieval, and
+- parameter passing
+is not yet supported.
+
