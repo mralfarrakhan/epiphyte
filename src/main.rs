@@ -58,8 +58,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         let syringe = Syringe::for_process(target_process);
         let injected_payload = syringe.inject(payload_path)?;
 
-        dbg!(&procedures);
-
         let procedures: HashMap<_, _> = procedures
             .into_iter()
             .filter_map(|(s, m)| {
@@ -76,14 +74,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             })
             .collect();
 
-        dbg!(&procedures);
-
         println!(
             "[INFO] REST procedure call available on http://localhost:{}/",
             port,
         );
 
-        let (cmd_tx, cmd_rx) = mpsc::channel();
+        type Request = (String, mpsc::Sender<String>);
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Request>();
 
         let info = async move || {
             Json(json!({
@@ -111,7 +108,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .route(
                         "/execute/{proc}",
                         get(|Path(proc): Path<String>| async move {
-                            cmd_tx.send(proc).unwrap();
+                            let (reply_tx, reply_rx) = mpsc::channel();
+
+                            cmd_tx.send((proc, reply_tx)).unwrap();
+
+                            match reply_rx.recv_timeout(Duration::from_millis(500)) {
+                                Ok(v) => (StatusCode::OK, Json(json!({ "message": v }))),
+                                Err(r) => (
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    Json(json!({ "message": r.to_string() })),
+                                ),
+                            }
                         }),
                     )
                     .fallback(fallback);
@@ -128,10 +135,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         loop {
             match cmd_rx.recv_timeout(Duration::from_millis(500)) {
-                Ok(v) => {
+                Ok((v, reply_tx)) => {
                     if let Some(p) = procedures.get(&v) {
                         p.call()?;
                     }
+                    reply_tx.send("Hello!".into())?;
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     if thandle.is_finished() {
