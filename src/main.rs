@@ -55,11 +55,25 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!();
         }
 
+        let syringe = Syringe::for_process(target_process);
+        let injected_payload = syringe.inject(payload_path)?;
+
         dbg!(&procedures);
 
         let procedures: HashMap<_, _> = procedures
             .into_iter()
-            .filter(|(s, m)| s != "DllMain" && m.is_valid())
+            .filter_map(|(s, m)| {
+                if s != "DllMain" && m.is_valid() {
+                    let procedure = unsafe {
+                        syringe.get_raw_procedure::<extern "system" fn()>(injected_payload, &s)
+                    }
+                    .ok()??;
+
+                    Some((s, procedure))
+                } else {
+                    None
+                }
+            })
             .collect();
 
         dbg!(&procedures);
@@ -68,9 +82,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             "[INFO] REST procedure call available on http://localhost:{}/",
             port,
         );
-
-        let syringe = Syringe::for_process(target_process);
-        let injected_payload = syringe.inject(payload_path)?;
 
         let (cmd_tx, cmd_rx) = mpsc::channel();
 
@@ -91,7 +102,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             )
         };
 
-        let offset_tx = cmd_tx.clone();
         let thandle = thread::spawn(move || {
             let runtime = Builder::new_current_thread().enable_all().build().unwrap();
 
@@ -101,7 +111,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .route(
                         "/execute/{proc}",
                         get(|Path(proc): Path<String>| async move {
-                            offset_tx.send(proc).unwrap();
+                            cmd_tx.send(proc).unwrap();
                         }),
                     )
                     .fallback(fallback);
@@ -116,17 +126,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             });
         });
 
-        let remote_offset = unsafe {
-            syringe.get_raw_procedure::<extern "system" fn()>(injected_payload, "offset")
-        }?
-        .ok_or("error fetching remote procedure")?;
-
         loop {
             match cmd_rx.recv_timeout(Duration::from_millis(500)) {
-                Ok(v) => match v.as_str() {
-                    "offset" => remote_offset.call()?,
-                    proc => println!("executing '{}'", proc),
-                },
+                Ok(v) => {
+                    if let Some(p) = procedures.get(&v) {
+                        p.call()?;
+                    }
+                }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     if thandle.is_finished() {
                         break;
