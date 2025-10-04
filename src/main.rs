@@ -1,7 +1,10 @@
-use std::{error::Error, net::SocketAddr, sync::mpsc, thread, time::Duration};
+use std::{
+    collections::HashMap, error::Error, net::SocketAddr, sync::mpsc, thread, time::Duration,
+};
 
 use axum::{
     Router,
+    extract::Path,
     http::{StatusCode, Uri},
     response::Json,
     routing::get,
@@ -16,10 +19,6 @@ use tokio::{net::TcpListener, runtime::Builder, signal};
 
 mod config;
 mod payload;
-
-enum Command {
-    OffsetCmd,
-}
 
 fn main() -> Result<(), Box<dyn Error>> {
     let options = config::Options::load()?;
@@ -56,7 +55,19 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!();
         }
 
-        println!("[INFO] REST procedure call available at port {}", port,);
+        dbg!(&procedures);
+
+        let procedures: HashMap<_, _> = procedures
+            .into_iter()
+            .filter(|(s, m)| s != "DllMain" && m.is_valid())
+            .collect();
+
+        dbg!(&procedures);
+
+        println!(
+            "[INFO] REST procedure call available on http://localhost:{}/",
+            port,
+        );
 
         let syringe = Syringe::for_process(target_process);
         let injected_payload = syringe.inject(payload_path)?;
@@ -75,7 +86,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "message": format!("no route for '{uri}'")
+                    "message": format!("'{uri}' not found")
                 })),
             )
         };
@@ -88,8 +99,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 let app = Router::new()
                     .route("/info", get(info))
                     .route(
-                        "/offset",
-                        get(async move || offset_tx.send(Command::OffsetCmd).unwrap()),
+                        "/execute/{proc}",
+                        get(|Path(proc): Path<String>| async move {
+                            offset_tx.send(proc).unwrap();
+                        }),
                     )
                     .fallback(fallback);
 
@@ -110,7 +123,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         loop {
             match cmd_rx.recv_timeout(Duration::from_millis(500)) {
-                Ok(Command::OffsetCmd) => remote_offset.call()?,
+                Ok(v) => match v.as_str() {
+                    "offset" => remote_offset.call()?,
+                    proc => println!("executing '{}'", proc),
+                },
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     if thandle.is_finished() {
                         break;
@@ -123,10 +139,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         if let Err(e) = thandle.join() {
             Err(format!("[WARNING] axum thread closed with panic: {:#?}", e))?;
         } else {
-            println!("[INFO] all good. Ejecting payload...");
+            println!("[INFO] all good, ejecting payload...");
         }
 
         syringe.eject(injected_payload)?;
+
+        println!("[INFO] bye.")
     } else {
         eprintln!(
             "[ERROR] program whose name contains '{}' doesn't seem to be run...",

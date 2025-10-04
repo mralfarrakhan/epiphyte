@@ -7,8 +7,14 @@ use crate::config::Identifier;
 
 #[derive(Debug)]
 pub struct Metadata {
-    alias: Option<String>,
+    symbol: Option<String>,
     address: Option<u64>,
+}
+
+impl Metadata {
+    pub fn is_valid(&self) -> bool {
+        self.symbol.is_some() && self.address.is_some()
+    }
 }
 
 pub fn analyze_payload<I>(
@@ -42,7 +48,7 @@ where
         res.insert(
             symbol.clone(),
             Metadata {
-                alias: name_map.get(symbol).cloned(),
+                symbol: name_map.get(symbol).cloned(),
                 address: Some(address),
             },
         );
@@ -57,7 +63,7 @@ pub fn print_symbol_table(symbol: &HashMap<String, Metadata>) -> Result<(), std:
         .map(|s| {
             let m = &symbol[s];
 
-            let path = m.alias.clone().unwrap_or("UNACCESSIBLE".into());
+            let path = m.symbol.clone().unwrap_or("UNACCESSIBLE".into());
             let address = match m.address {
                 Some(a) => format!("{:#x}", a),
                 None => "NOT FOUND".into(),
@@ -73,6 +79,6 @@ pub fn print_symbol_table(symbol: &HashMap<String, Metadata>) -> Result<(), std:
         ])
         .bold(true);
 
-    println!("Symbol Table");
+    println!("[INFO] Symbol Table");
     print_stdout(t)
 }
