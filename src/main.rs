@@ -1,6 +1,12 @@
 use std::{error::Error, net::SocketAddr, sync::mpsc, thread, time::Duration};
 
-use axum::{Router, response::Json, routing::get, serve};
+use axum::{
+    Router,
+    http::{StatusCode, Uri},
+    response::Json,
+    routing::get,
+    serve,
+};
 use dll_syringe::{
     Syringe,
     process::{OwnedProcess, Process},
@@ -38,19 +44,19 @@ fn main() -> Result<(), Box<dyn Error>> {
             .to_string();
 
         println!(
-            "injected process base name: {}, path: {}, pid: {}.",
+            "[INFO] injected process base name: {}, path: {}, pid: {}.",
             base_name, exec_path, pid
         );
 
         if options.is_verbose {
             println!();
             if let Err(e) = payload::print_symbol_table(&procedures) {
-                eprintln!("Error printing symbol table: {}", e);
+                eprintln!("[ERROR] failed to print symbols table: {}", e);
             }
             println!();
         }
 
-        println!("REST procedure call available at port {}", port,);
+        println!("[INFO] REST procedure call available at port {}", port,);
 
         let syringe = Syringe::for_process(target_process);
         let injected_payload = syringe.inject(payload_path)?;
@@ -65,15 +71,27 @@ fn main() -> Result<(), Box<dyn Error>> {
             }))
         };
 
+        let fallback = async |uri: Uri| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "message": format!("no route for '{uri}'")
+                })),
+            )
+        };
+
         let offset_tx = cmd_tx.clone();
         let thandle = thread::spawn(move || {
             let runtime = Builder::new_current_thread().enable_all().build().unwrap();
 
             runtime.block_on(async {
-                let app = Router::new().route("/", get(info)).route(
-                    "/offset",
-                    get(async move || offset_tx.send(Command::OffsetCmd).unwrap()),
-                );
+                let app = Router::new()
+                    .route("/info", get(info))
+                    .route(
+                        "/offset",
+                        get(async move || offset_tx.send(Command::OffsetCmd).unwrap()),
+                    )
+                    .fallback(fallback);
 
                 let addr: SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
                 let listener = TcpListener::bind(addr).await.unwrap();
@@ -103,15 +121,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         if let Err(e) = thandle.join() {
-            Err(format!("axum thread closed with panic: {:#?}", e))?;
+            Err(format!("[WARNING] axum thread closed with panic: {:#?}", e))?;
         } else {
-            println!("All good. Ejecting payload...");
+            println!("[INFO] all good. Ejecting payload...");
         }
 
         syringe.eject(injected_payload)?;
     } else {
         eprintln!(
-            "program whose name contains '{}' doesn't seem to be run...",
+            "[ERROR] program whose name contains '{}' doesn't seem to be run...",
             target_name
         );
     }

@@ -6,8 +6,8 @@ use clap::Parser;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
-    target_name: String,
-    payload_path: PathBuf,
+    target_name: Option<String>,
+    payload_path: Option<PathBuf>,
     port: Option<u16>,
     paths: Option<Vec<Map>>,
 }
@@ -71,50 +71,36 @@ impl Options {
         let cli = Cli::parse();
 
         let config_path = cli.config_path.unwrap_or_else(|| {
-            println!("configuration file path is not set. using './config.toml'");
+            println!("[WARNING] configuration file path is not set.");
+            println!("[WARNING] looking for ./config.toml.");
             "config.toml".into()
         });
         let config = match Config::read_config(&config_path) {
             Ok(v) => v,
-            Err(_) => {
-                println!("cannot read config in '{}'", config_path.display());
+            Err(err) => {
+                eprintln!(
+                    "[ERROR] cannot read config in '{}': {:?}.",
+                    config_path.display(),
+                    err
+                );
                 Default::default()
             }
         };
 
-        let target_name = match cli.target_name {
-            Some(v) => v,
-            None => config.target_name,
-        };
+        let target_name = cli.target_name.or(config.target_name).ok_or(
+            "target name is defined in neither configuration file nor command line arguments.",
+        )?;
 
-        if target_name.is_empty() {
-            return Err(
-                "Target name is defined in neither configuration file nor command line arguments."
-                    .into(),
-            );
-        }
+        let payload_path = cli.payload_path.or(config.payload_path).ok_or(
+            "payload path is defined in neither configuration file nor command line arguments",
+        )?;
 
-        let payload_path = match cli.payload_path {
-            Some(v) => v,
-            None => config.payload_path,
-        };
-
-        if payload_path.as_os_str().is_empty() {
-            return Err(
-                "Payload path is defined in neither configuration file nor command line arguments"
-                    .into(),
-            );
-        }
-
-        let port = match cli.port {
-            Some(v) => v,
-            None => config.port.unwrap_or(8070),
-        };
+        let port = cli.port.or(config.port).unwrap_or(8070);
 
         let paths = match config.paths {
             Some(v) => v,
             None => {
-                println!("No paths defined in configuration file.");
+                println!("[WARNING] no paths defined in configuration file.");
                 Default::default()
             }
         };
