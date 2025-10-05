@@ -1,6 +1,15 @@
-use std::{error::Error, net::SocketAddr, sync::mpsc, thread, time::Duration};
+use std::{
+    collections::HashMap, error::Error, net::SocketAddr, sync::mpsc, thread, time::Duration,
+};
 
-use axum::{Router, response::Json, routing::get, serve};
+use axum::{
+    Router,
+    extract::Path,
+    http::{StatusCode, Uri},
+    response::Json,
+    routing::get,
+    serve,
+};
 use dll_syringe::{
     Syringe,
     process::{OwnedProcess, Process},
@@ -8,20 +17,17 @@ use dll_syringe::{
 use serde_json::json;
 use tokio::{net::TcpListener, runtime::Builder, signal};
 
-const DEFAULT_PORT: &str = "8070";
-const USAGE_MSG: &str = "usage: injector PROC_NAME PAYLOAD_PATH [PORT]";
-
-enum Command {
-    OffsetCmd,
-}
+mod config;
+mod payload;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut args = std::env::args();
+    let options = config::Options::load()?;
+    let target_name = options.target_name;
+    let payload_path = options.payload_path;
+    let port = options.port;
+    let paths = options.paths;
 
-    let _ = args.next();
-    let target_name = args.next().ok_or(USAGE_MSG)?;
-    let payload_path = args.next().ok_or(USAGE_MSG)?;
-    let port = args.next().unwrap_or(DEFAULT_PORT.into());
+    let procedures = payload::analyze_payload(&payload_path, paths)?;
 
     if let Some(target_process) = OwnedProcess::find_first_by_name(&target_name) {
         let pid = target_process.pid()?;
@@ -37,32 +43,85 @@ fn main() -> Result<(), Box<dyn Error>> {
             .to_string();
 
         println!(
-            "injected process base name: {}, path: {}, pid: {}.",
+            "[INFO] injected process base name: {}, path: {}, pid: {}.",
             base_name, exec_path, pid
         );
+
+        if options.is_verbose {
+            println!();
+            if let Err(e) = payload::print_symbol_table(&procedures) {
+                eprintln!("[ERROR] failed to print symbols table: {}", e);
+            }
+            println!();
+        }
 
         let syringe = Syringe::for_process(target_process);
         let injected_payload = syringe.inject(payload_path)?;
 
-        let (cmd_tx, cmd_rx) = mpsc::channel();
+        let procedures: HashMap<_, _> = procedures
+            .into_iter()
+            .filter_map(|(s, m)| {
+                if s != "DllMain" && m.is_valid() {
+                    let procedure = unsafe {
+                        syringe.get_raw_procedure::<extern "system" fn()>(injected_payload, &s)
+                    }
+                    .ok()??;
+
+                    Some((s, procedure))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        println!(
+            "[INFO] REST procedure call available on http://localhost:{}/",
+            port,
+        );
+
+        type Request = (String, mpsc::Sender<String>);
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Request>();
 
         let info = async move || {
             Json(json!({
-                "base name": base_name,
-                "exec path": exec_path,
+                "base_name": base_name,
+                "exec_path": exec_path,
                 "pid": pid,
             }))
         };
 
-        let offset_tx = cmd_tx.clone();
+        let fallback = async |uri: Uri| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "message": format!("'{uri}' not found")
+                })),
+            )
+        };
+
         let thandle = thread::spawn(move || {
             let runtime = Builder::new_current_thread().enable_all().build().unwrap();
 
             runtime.block_on(async {
-                let app = Router::new().route("/", get(info)).route(
-                    "/offset",
-                    get(async move || offset_tx.send(Command::OffsetCmd).unwrap()),
-                );
+                let app = Router::new()
+                    .route("/info", get(info))
+                    .route(
+                        "/execute/{proc}",
+                        get(|Path(proc): Path<String>| async move {
+                            let (reply_tx, reply_rx) = mpsc::channel();
+
+                            cmd_tx.send((proc, reply_tx)).unwrap();
+
+                            match reply_rx.recv_timeout(Duration::from_millis(500)) {
+                                Ok(v) => (StatusCode::OK, Json(json!({ "message": v }))),
+                                Err(r) => (
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    Json(json!({ "message": r.to_string() })),
+                                ),
+                            }
+                        }),
+                    )
+                    .fallback(fallback);
 
                 let addr: SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
                 let listener = TcpListener::bind(addr).await.unwrap();
@@ -74,14 +133,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             });
         });
 
-        let remote_offset = unsafe {
-            syringe.get_raw_procedure::<extern "system" fn()>(injected_payload, "offset")
-        }?
-        .ok_or("error fetching remote procedure")?;
-
         loop {
-            match cmd_rx.recv_timeout(Duration::from_millis(500)) {
-                Ok(Command::OffsetCmd) => remote_offset.call()?,
+            match cmd_rx.recv_timeout(Duration::from_millis(options.timeout)) {
+                Ok((v, reply_tx)) => {
+                    if let Some(p) = procedures.get(&v) {
+                        p.call()?;
+                    }
+                    reply_tx.send("Hello!".into())?;
+                }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     if thandle.is_finished() {
                         break;
@@ -92,15 +151,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         if let Err(e) = thandle.join() {
-            Err(format!("axum thread closed with panic: {:#?}", e))?;
+            Err(format!("[WARNING] axum thread closed with panic: {:#?}", e))?;
         } else {
-            println!("All good. Ejecting payload...");
+            println!("[INFO] all good, ejecting payload...");
         }
 
         syringe.eject(injected_payload)?;
+
+        println!("[INFO] bye.")
     } else {
         eprintln!(
-            "Program whose name contains '{}' doesn't seem to be run...",
+            "[ERROR] program whose name contains '{}' doesn't seem to be run...",
             target_name
         );
     }
