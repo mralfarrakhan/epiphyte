@@ -1,4 +1,4 @@
 /target
 /.vscode
 
-config.toml
+/config.toml
