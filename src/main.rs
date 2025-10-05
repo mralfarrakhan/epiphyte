@@ -134,7 +134,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         });
 
         loop {
-            match cmd_rx.recv_timeout(Duration::from_millis(500)) {
+            match cmd_rx.recv_timeout(Duration::from_millis(options.timeout)) {
                 Ok((v, reply_tx)) => {
                     if let Some(p) = procedures.get(&v) {
                         p.call()?;

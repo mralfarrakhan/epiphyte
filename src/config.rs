@@ -9,6 +9,7 @@ struct Config {
     target_name: Option<String>,
     payload_path: Option<PathBuf>,
     port: Option<u16>,
+    timeout: Option<u64>,
     paths: Option<Vec<Map>>,
 }
 
@@ -56,6 +57,7 @@ pub struct Options {
     pub target_name: String,
     pub payload_path: PathBuf,
     pub port: u16,
+    pub timeout: u64,
     pub paths: Vec<Identifier>,
     pub is_verbose: bool,
 }
@@ -97,6 +99,8 @@ impl Options {
 
         let port = cli.port.or(config.port).unwrap_or(8070);
 
+        let timeout = config.timeout.unwrap_or(500);
+
         let paths = match config.paths {
             Some(v) => v,
             None => {
@@ -121,6 +125,7 @@ impl Options {
             target_name,
             payload_path,
             port,
+            timeout,
             paths,
             is_verbose,
         };
