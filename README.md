@@ -38,6 +38,11 @@ name = "offset"
 [[paths]]
 name = "execute"
 symbol = "_ZN6viewer9Decryptor7executeEv"
+
+# procedures are assumed to be a void(void) function, else this must be configured explicitly and correctly. more on 'Functions with parameters".
+[[paths]]
+name = "greet"
+signature = "str_to_void"
 ```
 
 If multiple paths are set to a same symbol name, only one would be kept. Run with flag `-v/--verbose` to show list of path names with their corresponding symbol and address. Some notes:
@@ -45,11 +50,13 @@ If multiple paths are set to a same symbol name, only one would be kept. Run wit
 -   `UNACCESSIBLE` path is for symbols found on the payload but not in configuration file.
 -   If path is defined in config but the symbol is not found in the payload, it would not show up in the list.
 
-## To do
+### Functions with parameters
 
-Currently, this utility expects only exported `void(void)`, meaning:
+All symbols listed in configuration file are assumed to be `void(void)` functions. But, this utility supports several types of function that accept input and output. The `signature` field of those function **must** be set correctly, as invoking functions with incorrect parameter would lead to _undefined behavior_, _crash_, and _data corruption_. Use carefully.
 
--   return value retrieval, and
--   parameter passing
+Available function types and its `signature` value:
 
-are not yet supported.
+-   **`signal`** (default): `void(void)`
+-   **`blob`**: `uint32_t(const void*, uint32_t, void*, uint32_t)`
+-   **`multiplex`**: `uint32_t(uint32_t, const void*, uint32_t, void*, uint32_t)`
+-   **`text`**: `char*(const char*)`
