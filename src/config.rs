@@ -29,7 +29,7 @@ impl Config {
 }
 
 #[derive(Parser)]
-#[command(about, long_about=None)]
+#[command(about, long_about = None, version = env!("EPIPHYTE_BUILD_VERSION"))]
 struct Cli {
     /// overrides config
     #[arg(short = 't', long)]
