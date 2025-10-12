@@ -1,12 +1,16 @@
 use std::{
-    ffi::{CStr, c_char, c_void},
-    thread,
+    ffi::{CStr, CString, c_char, c_void},
+    ptr, thread,
 };
 
 use windows::{
     Win32::{
         Foundation::HMODULE,
-        System::{LibraryLoader::GetModuleHandleA, SystemServices::DLL_PROCESS_ATTACH},
+        System::{
+            LibraryLoader::GetModuleHandleA,
+            Memory::{MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE, VirtualAlloc},
+            SystemServices::DLL_PROCESS_ATTACH,
+        },
         UI::WindowsAndMessaging::{MB_OK, MessageBoxA},
     },
     core::PCSTR,
@@ -38,22 +42,37 @@ pub extern "system" fn offset() {
 /// # Safety
 ///
 /// This function is dangerous, like, really dangerous.
+///
+/// WARNING: USE VirtualAlloc FOR STRINGS THAT WILL BE RETURNED.
 #[unsafe(no_mangle)]
 pub unsafe extern "system" fn greet(msg: *const c_char) -> usize {
-    if msg.is_null() {
-        return 1;
+    unsafe {
+        if msg.is_null() {
+            return 0;
+        }
+
+        let msg = CStr::from_ptr(msg).to_str().unwrap_or("");
+        let msg = format!("Hello, {}!", msg);
+
+        let cmsg = CString::new(msg.clone())
+            .unwrap_or_default()
+            .into_bytes_with_nul();
+
+        let size = cmsg.len();
+
+        let mem = VirtualAlloc(None, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+        if mem.is_null() {
+            return 0;
+        }
+
+        ptr::copy_nonoverlapping(cmsg.as_ptr(), mem as _, size);
+
+        thread::spawn(move || {
+            dbgmsgbox(msg, None);
+        });
+
+        mem as _
     }
-
-    let msg = unsafe { CStr::from_ptr(msg).to_str().unwrap_or("") };
-    let msg = format!("Hello, {}", msg);
-
-    let size = msg.len();
-
-    thread::spawn(move || {
-        dbgmsgbox(msg, None);
-    });
-
-    size
 }
 
 fn dbgmsgbox(message: String, title: Option<String>) {

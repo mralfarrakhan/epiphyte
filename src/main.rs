@@ -183,10 +183,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
                 Ok(((path, MultiPayload::Text(text)), reply_tx)) => {
                     if let Some(RemoteProcContainer::Text(proc)) = procedures.get(&path) {
-                        let remote_addr = ScopedRemoteString::new(pid.into(), &text.message)?;
+                        let outgoing_msg = ScopedRemoteString::new(pid.into(), &text.message)?;
 
-                        match proc.call(remote_addr.get_addr()) {
-                            Ok(res) => reply_tx.send(Ok(format!("TACK. bytes: {}", res)))?,
+                        match proc.call(outgoing_msg.get_addr()) {
+                            Ok(res) => {
+                                let res = ScopedRemoteString::from_remote(pid.into(), res)?;
+
+                                let s = res.read_remote()?;
+
+                                reply_tx.send(Ok(format!("TACK. {}.", s)))?;
+                            }
                             Err(e) => reply_tx.send(Err(e.to_string()))?,
                         }
                     } else {
