@@ -39,15 +39,16 @@ name = "offset"
 name = "execute"
 symbol = "_ZN6viewer9Decryptor7executeEv"
 
-# procedures are assumed to be a void(void) function, else this must be configured explicitly and correctly. more on 'Functions with parameters".
+# procedures are assumed to be a void(void) function, else this must be configured explicitly
+# see 'Functions with parameters"
 [[paths]]
 name = "greet"
-signature = "str_to_void"
+signature = "text"
 ```
 
 If multiple paths are set to a same symbol name, only one would be kept. Run with flag `-v/--verbose` to show list of path names with their corresponding symbol and address. Some notes:
 
--   `UNACCESSIBLE` path is for symbols found on the payload but not in configuration file.
+-   `UNACCESSIBLE` path is for symbols found on the payload but not in configuration file. `DllMain` is also unaccessible.
 -   If path is defined in config but the symbol is not found in the payload, it would not show up in the list.
 
 ### Functions with parameters
@@ -61,10 +62,11 @@ Available function types and its `signature` value:
 
 > **WARNING**
 >
-> _ALWAYS_ Use `VirtualAlloc` to allocate pointer returned from `text` type functions. Interprocess string utilizes `VirtualAllocEx`/`VirtualFreeEx` to manage memory. Rust strings like `CString` uses its own allocator and mixing those would also lead to _UB_, _crash_, and _data corruption_.
+> _ALWAYS_ Use `VirtualAlloc` to allocate pointer returned from `text` type functions. Interprocess string utilizes `VirtualAllocEx`/`VirtualFreeEx` to manage memory. Rust strings like `CString` use its own allocator and mixing those would also lead to _UB_, _crash_, and _data corruption_.
 
 ## To Do
 
 -   Recovery system.
 -   String allocator helper.
+
 
