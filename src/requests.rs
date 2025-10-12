@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Text {
-    message: String,
+    pub message: String,
 }
 pub enum MultiPayload {
     Text(Text),
@@ -46,7 +46,7 @@ where
     async fn from_request(req: Request<Body>, _state: &S) -> Result<Self, Self::Rejection> {
         let bytes = body::to_bytes(req.into_body(), 1025 * 1024)
             .await
-            .map_err(|e| MultiPayloadRejection::from(e))?;
+            .map_err(MultiPayloadRejection::from)?;
 
         if bytes.is_empty() {
             return Ok(Self::Signal);

@@ -1,5 +1,5 @@
 use std::{
-    ffi::CStr,
+    ffi::{CStr, CString},
     os::raw::{c_char, c_void},
     thread,
 };
@@ -36,17 +36,25 @@ pub extern "system" fn offset() {
     });
 }
 
+/// # Safety
+///
+/// This function is dangerous, like, really dangerous.
 #[unsafe(no_mangle)]
-pub extern "system" fn greet(msg: *const c_char) {
+pub unsafe extern "system" fn greet(msg: *const c_char) -> *mut c_char {
+    let res = CString::new("...").unwrap();
+
     if msg.is_null() {
-        return;
+        return res.into_raw();
     }
+
     let msg = unsafe { CStr::from_ptr(msg).to_str().unwrap_or("") };
     let msg = format!("Hello, {}", msg);
 
     thread::spawn(move || {
         dbgmsgbox(msg, None);
     });
+
+    res.into_raw()
 }
 
 fn dbgmsgbox(message: String, title: Option<String>) {

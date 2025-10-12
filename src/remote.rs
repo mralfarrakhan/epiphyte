@@ -15,3 +15,7 @@ pub enum RemoteProcSignature {
     Signal,
     Text,
 }
+
+pub fn write_remote_string(pid: u32, s: &str) -> Result<usize, Box<dyn std::error::Error>> {
+    unsafe { Ok(11) }
+}
