@@ -52,7 +52,7 @@ If multiple paths are set to a same symbol name, only one would be kept. Run wit
 
 ### Functions with parameters
 
-All symbols listed in configuration file are assumed to be `void(void)` functions. But, this utility supports several types of function that accept input and output. The `signature` field of those function **must** be set correctly, as invoking functions with incorrect parameter would lead to _undefined behavior_, _crash_, and _data corruption_. Use carefully.
+All symbols listed in configuration file are assumed to be `void(void)` functions. But, this utility supports several types of function that accept input and output. The `signature` field of those function **must** be set correctly, as invoking functions with incorrect parameter would lead to _UB_, _crash_, and _data corruption_. Use carefully.
 
 Available function types and its `signature` value:
 
@@ -61,8 +61,10 @@ Available function types and its `signature` value:
 
 > **WARNING**
 >
-> _ALWAYS_ Use `VirtualAlloc` to allocate pointer returned from `text` type functions. Interprocess string utilizes `VirtualAllocEx`/`VirtualFreeEx` to manage memory. Rust strings like `CString` uses its own allocator and mixing this would lead to _UB_, _crash_, and _data corruption_.
+> _ALWAYS_ Use `VirtualAlloc` to allocate pointer returned from `text` type functions. Interprocess string utilizes `VirtualAllocEx`/`VirtualFreeEx` to manage memory. Rust strings like `CString` uses its own allocator and mixing those would also lead to _UB_, _crash_, and _data corruption_.
 
 ## To Do
 
 -   Recovery system.
+-   String allocator helper.
+
