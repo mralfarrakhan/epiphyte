@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use clap::Parser;
 
-use crate::remote::SignatureConfig;
+use crate::remote::RemoteProcSignature;
 
 #[derive(Deserialize, Default)]
 struct Config {
@@ -19,7 +19,7 @@ struct Config {
 struct Map {
     pub name: String,
     pub symbol: Option<String>,
-    pub signature: Option<SignatureConfig>,
+    pub signature: Option<RemoteProcSignature>,
 }
 
 impl Config {
@@ -69,7 +69,7 @@ pub struct Options {
 pub struct Identifier {
     pub name: String,
     pub symbol: String,
-    pub signature: SignatureConfig,
+    pub signature: RemoteProcSignature,
 }
 
 impl Options {

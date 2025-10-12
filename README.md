@@ -57,6 +57,4 @@ All symbols listed in configuration file are assumed to be `void(void)` function
 Available function types and its `signature` value:
 
 -   **`signal`** (default): `void(void)`
--   **`blob`**: `uint32_t(const void*, uint32_t, void*, uint32_t)`
--   **`multiplex`**: `uint32_t(uint32_t, const void*, uint32_t, void*, uint32_t)`
 -   **`text`**: `char*(const char*)`

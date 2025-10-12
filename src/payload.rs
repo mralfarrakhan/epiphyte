@@ -3,13 +3,13 @@ use std::{collections::HashMap, path::PathBuf};
 use cli_table::{Cell, Style, Table, print_stdout};
 use object::{File, Object};
 
-use crate::{config::Identifier, remote::SignatureConfig};
+use crate::{config::Identifier, remote::RemoteProcSignature};
 
 #[derive(Debug, Default)]
 pub struct Metadata {
-    symbol: Option<String>,
-    address: Option<u64>,
-    signature: Option<SignatureConfig>,
+    pub symbol: Option<String>,
+    pub address: Option<u64>,
+    pub signature: Option<RemoteProcSignature>,
 }
 
 impl Metadata {
@@ -38,7 +38,7 @@ where
         })
         .collect();
 
-    let name_map: HashMap<String, (String, SignatureConfig)> = procedure_paths
+    let name_map: HashMap<String, (String, RemoteProcSignature)> = procedure_paths
         .into_iter()
         .map(|i| (i.symbol, (i.name, i.signature)))
         .collect();
