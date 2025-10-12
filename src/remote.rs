@@ -16,6 +16,6 @@ pub enum SignatureConfig {
     #[default]
     Signal,
     Blob,
-    MBlob,
+    Multiplex,
     Text,
 }
