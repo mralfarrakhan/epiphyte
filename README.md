@@ -53,7 +53,7 @@ If multiple paths are set to a same symbol name, only one would be kept. Run wit
 
 ### Functions with parameters
 
-All symbols listed in configuration file are assumed to be `void(void)` functions. But, this utility supports several types of function that accept input and output. The `signature` field of those function **must** be set correctly, as invoking functions with incorrect parameter would lead to _UB_, _crash_, and _data corruption_. Use carefully.
+All symbols listed in configuration file are assumed to be `void(void)` functions. But, this utility also supports that accept and return string (as pointers to string in the target address space). The `signature` field of those function **must** be set correctly, as invoking functions with incorrect parameter would lead to _UB_, _crash_, and _data corruption_. Use carefully.
 
 Available function types and its `signature` value:
 
@@ -68,5 +68,6 @@ Available function types and its `signature` value:
 
 -   Recovery system.
 -   String allocator helper.
+
 
 
