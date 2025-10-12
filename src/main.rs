@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     error::Error,
-    ffi::CString,
     net::SocketAddr,
     sync::mpsc,
     thread,
@@ -24,7 +23,7 @@ use serde_json::json;
 use tokio::{net::TcpListener, runtime::Builder, signal};
 
 use crate::{
-    remote::{RemoteProcContainer, RemoteProcSignature},
+    remote::{RemoteProcContainer, RemoteProcSignature, write_remote_string},
     requests::MultiPayload,
 };
 
@@ -184,12 +183,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
                 Ok(((path, MultiPayload::Text(text)), reply_tx)) => {
                     if let Some(RemoteProcContainer::Text(proc)) = procedures.get(&path) {
-                        let cmsg = CString::new(text.message)?;
-                        let cmsg = cmsg.as_ptr();
+                        let remote_addr = write_remote_string(pid.into(), &text.message)?;
 
-                        dbg!(cmsg);
-
-                        match proc.call(cmsg) {
+                        match proc.call(remote_addr) {
                             Ok(_res) => reply_tx.send(Ok("TACK".into()))?,
                             Err(e) => reply_tx.send(Err(e.to_string()))?,
                         }

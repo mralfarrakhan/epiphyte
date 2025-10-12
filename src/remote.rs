@@ -1,11 +1,16 @@
-use std::os::raw::c_char;
+use std::ffi::CString;
 
 use dll_syringe::rpc::RemoteRawProcedure as Proc;
 use serde::Deserialize;
+use windows::Win32::System::{
+    Diagnostics::Debug::WriteProcessMemory,
+    Memory::{MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE, VirtualAllocEx, VirtualFreeEx},
+    Threading::{OpenProcess, PROCESS_ALL_ACCESS},
+};
 
 pub enum RemoteProcContainer {
     Signal(Proc<extern "system" fn()>),
-    Text(Proc<extern "system" fn(*const c_char) -> *mut c_char>),
+    Text(Proc<extern "system" fn(usize) -> usize>),
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
@@ -14,4 +19,40 @@ pub enum RemoteProcSignature {
     #[default]
     Signal,
     Text,
+}
+
+pub fn write_remote_string(pid: u32, msg: &str) -> Result<usize, Box<dyn std::error::Error>> {
+    let cmsg = CString::new(msg)?;
+    let cmsg = cmsg.into_bytes_with_nul();
+    unsafe {
+        let proc_handle = OpenProcess(PROCESS_ALL_ACCESS, false, pid)?;
+        if proc_handle.is_invalid() {
+            return Err("OpenProcess failed".into());
+        }
+
+        let size = cmsg.len() + 1;
+        let remote = VirtualAllocEx(
+            proc_handle,
+            None,
+            size,
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_READWRITE,
+        );
+        if remote.is_null() {
+            return Err("VirtualAllocEx failed".into());
+        }
+
+        if let Err(e) = WriteProcessMemory(
+            proc_handle,
+            remote,
+            cmsg.as_ptr() as *const _,
+            cmsg.len(),
+            None,
+        ) {
+            VirtualFreeEx(proc_handle, remote, 0, MEM_RELEASE)?;
+            return Err(e.into());
+        }
+
+        Ok(remote as usize)
+    }
 }
