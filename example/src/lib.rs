@@ -1,6 +1,5 @@
 use std::{
-    ffi::CStr,
-    os::raw::{c_char, c_void},
+    ffi::{CStr, c_char, c_void},
     thread,
 };
 
@@ -48,11 +47,13 @@ pub unsafe extern "system" fn greet(msg: *const c_char) -> usize {
     let msg = unsafe { CStr::from_ptr(msg).to_str().unwrap_or("") };
     let msg = format!("Hello, {}", msg);
 
+    let size = msg.len();
+
     thread::spawn(move || {
         dbgmsgbox(msg, None);
     });
 
-    1
+    size
 }
 
 fn dbgmsgbox(message: String, title: Option<String>) {

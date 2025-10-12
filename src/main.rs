@@ -23,7 +23,7 @@ use serde_json::json;
 use tokio::{net::TcpListener, runtime::Builder, signal};
 
 use crate::{
-    remote::{RemoteProcContainer, RemoteProcSignature, write_remote_string},
+    remote::{RemoteProcContainer, RemoteProcSignature, ScopedRemoteString},
     requests::MultiPayload,
 };
 
@@ -133,7 +133,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                                 cmd_tx.send(((proc, payload), reply_tx)).unwrap();
 
-                                match reply_rx.recv_timeout(Duration::from_millis(10000)) {
+                                match reply_rx.recv_timeout(Duration::from_millis(500)) {
                                     Ok(Ok(v)) => {
                                         let elapsed = start.elapsed().as_millis();
                                         (
@@ -183,10 +183,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
                 Ok(((path, MultiPayload::Text(text)), reply_tx)) => {
                     if let Some(RemoteProcContainer::Text(proc)) = procedures.get(&path) {
-                        let remote_addr = write_remote_string(pid.into(), &text.message)?;
+                        let remote_addr = ScopedRemoteString::new(pid.into(), &text.message)?;
 
-                        match proc.call(remote_addr) {
-                            Ok(_res) => reply_tx.send(Ok("TACK".into()))?,
+                        match proc.call(remote_addr.get_addr()) {
+                            Ok(res) => reply_tx.send(Ok(format!("TACK. bytes: {}", res)))?,
                             Err(e) => reply_tx.send(Err(e.to_string()))?,
                         }
                     } else {
