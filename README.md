@@ -58,3 +58,11 @@ Available function types and its `signature` value:
 
 -   **`signal`** (default): `void(void)`
 -   **`text`**: `char*(const char*)`
+
+> **WARNING**
+>
+> _ALWAYS_ Use `VirtualAlloc` to allocate pointer returned from `text` type functions. Interprocess string utilizes `VirtualAllocEx`/`VirtualFreeEx` to manage memory. Rust strings like `CString` uses its own allocator and mixing this would lead to _UB_, _crash_, and _data corruption_.
+
+## To Do
+
+-   Recovery system.

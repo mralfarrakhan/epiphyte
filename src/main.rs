@@ -134,16 +134,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 cmd_tx.send(((proc, payload), reply_tx)).unwrap();
 
                                 match reply_rx.recv_timeout(Duration::from_millis(500)) {
-                                    Ok(Ok(v)) => {
-                                        let elapsed = start.elapsed().as_millis();
-                                        (
-                                            StatusCode::OK,
-                                            Json(json!({
-                                                "message": v,
-                                                "elapsed_ms": elapsed,
-                                            })),
-                                        )
-                                    }
+                                    Ok(Ok(v)) => (
+                                        StatusCode::OK,
+                                        Json(json!({
+                                            "message": v,
+                                            "elapsed_ms": start.elapsed().as_millis(),
+                                        })),
+                                    ),
                                     Ok(Err(e)) => (
                                         StatusCode::INTERNAL_SERVER_ERROR,
                                         Json(json!({ "error": e })),
