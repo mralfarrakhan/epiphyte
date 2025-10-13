@@ -13,7 +13,7 @@ This utility exposes RPC call for injected dll to a REST API interface:
 -   `GET /info`: returns info of current process base name, executable path, and pid.
 -   `GET /execute/{PATH}`: trigger functions on injected payload via name (see configuration).
 
-x86 payloads only work for x86 targets, and vice versa for x86_64.
+Note that x86 payloads only work for x86 targets, and vice versa for x86_64. For now, it only works and tested on x86.
 
 ## Configuration
 
@@ -68,6 +68,4 @@ Available function types and its `signature` value:
 
 -   Recovery system.
 -   String allocator helper.
-
-
-
+-   x86_64 support.
