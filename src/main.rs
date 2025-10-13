@@ -1,5 +1,10 @@
 use std::{
-    collections::HashMap, error::Error, net::SocketAddr, sync::mpsc, thread, time::Duration,
+    collections::HashMap,
+    error::Error,
+    net::SocketAddr,
+    sync::mpsc,
+    thread,
+    time::{Duration, Instant},
 };
 
 use axum::{
@@ -7,7 +12,7 @@ use axum::{
     extract::Path,
     http::{StatusCode, Uri},
     response::Json,
-    routing::get,
+    routing::{get, post},
     serve,
 };
 use dll_syringe::{
@@ -17,8 +22,15 @@ use dll_syringe::{
 use serde_json::json;
 use tokio::{net::TcpListener, runtime::Builder, signal};
 
+use crate::{
+    remote::{RemoteProcContainer, RemoteProcSignature, ScopedRemoteString},
+    requests::MultiPayload,
+};
+
 mod config;
 mod payload;
+mod remote;
+mod requests;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let options = config::Options::load()?;
@@ -61,11 +73,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         let procedures: HashMap<_, _> = procedures
             .into_iter()
             .filter_map(|(s, m)| {
-                if s != "DllMain" && m.is_valid() {
-                    let procedure = unsafe {
-                        syringe.get_raw_procedure::<extern "system" fn()>(injected_payload, &s)
-                    }
-                    .ok()??;
+                if s != "DllMain"
+                    && m.is_valid()
+                    && let Some(sig) = m.signature
+                {
+                    let procedure = match sig {
+                        RemoteProcSignature::Signal => RemoteProcContainer::Signal(unsafe {
+                            syringe.get_raw_procedure(injected_payload, &s).ok()??
+                        }),
+                        RemoteProcSignature::Text => RemoteProcContainer::Text(unsafe {
+                            syringe.get_raw_procedure(injected_payload, &s).ok()??
+                        }),
+                    };
 
                     Some((s, procedure))
                 } else {
@@ -79,7 +98,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             port,
         );
 
-        type Request = (String, mpsc::Sender<String>);
+        type Request = ((String, MultiPayload), mpsc::Sender<Result<String, String>>);
         let (cmd_tx, cmd_rx) = mpsc::channel::<Request>();
 
         let info = async move || {
@@ -107,19 +126,32 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .route("/info", get(info))
                     .route(
                         "/execute/{proc}",
-                        get(|Path(proc): Path<String>| async move {
-                            let (reply_tx, reply_rx) = mpsc::channel();
+                        post(
+                            |Path(proc): Path<String>, payload: MultiPayload| async move {
+                                let start = Instant::now();
+                                let (reply_tx, reply_rx) = mpsc::channel();
 
-                            cmd_tx.send((proc, reply_tx)).unwrap();
+                                cmd_tx.send(((proc, payload), reply_tx)).unwrap();
 
-                            match reply_rx.recv_timeout(Duration::from_millis(500)) {
-                                Ok(v) => (StatusCode::OK, Json(json!({ "message": v }))),
-                                Err(r) => (
-                                    StatusCode::INTERNAL_SERVER_ERROR,
-                                    Json(json!({ "message": r.to_string() })),
-                                ),
-                            }
-                        }),
+                                match reply_rx.recv_timeout(Duration::from_millis(500)) {
+                                    Ok(Ok(v)) => (
+                                        StatusCode::OK,
+                                        Json(json!({
+                                            "message": v,
+                                            "elapsed_ms": start.elapsed().as_millis(),
+                                        })),
+                                    ),
+                                    Ok(Err(e)) => (
+                                        StatusCode::INTERNAL_SERVER_ERROR,
+                                        Json(json!({ "error": e })),
+                                    ),
+                                    Err(r) => (
+                                        StatusCode::INTERNAL_SERVER_ERROR,
+                                        Json(json!({ "error": r.to_string() })),
+                                    ),
+                                }
+                            },
+                        ),
                     )
                     .fallback(fallback);
 
@@ -135,12 +167,36 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         loop {
             match cmd_rx.recv_timeout(Duration::from_millis(options.timeout)) {
-                Ok((v, reply_tx)) => {
-                    if let Some(p) = procedures.get(&v) {
-                        p.call()?;
+                Ok(((path, MultiPayload::Signal), reply_tx)) => {
+                    if let Some(RemoteProcContainer::Signal(proc)) = procedures.get(&path) {
+                        if let Err(e) = proc.call() {
+                            reply_tx.send(Err(e.to_string()))?;
+                        } else {
+                            reply_tx.send(Ok("SACK".into()))?;
+                        }
+                    } else {
+                        reply_tx.send(Err("Invalid payload".into()))?;
                     }
-                    reply_tx.send("Hello!".into())?;
                 }
+                Ok(((path, MultiPayload::Text(text)), reply_tx)) => {
+                    if let Some(RemoteProcContainer::Text(proc)) = procedures.get(&path) {
+                        let outgoing_msg = ScopedRemoteString::new(pid.into(), &text.message)?;
+
+                        match proc.call(outgoing_msg.get_addr()) {
+                            Ok(res) => {
+                                let res = ScopedRemoteString::from_remote(pid.into(), res)?;
+
+                                let s = res.read_remote()?;
+
+                                reply_tx.send(Ok(format!("TACK. {}.", s)))?;
+                            }
+                            Err(e) => reply_tx.send(Err(e.to_string()))?,
+                        }
+                    } else {
+                        reply_tx.send(Err("Invalid payload".into()))?;
+                    }
+                }
+
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     if thandle.is_finished() {
                         break;

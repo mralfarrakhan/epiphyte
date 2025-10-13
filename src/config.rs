@@ -1,10 +1,12 @@
 use std::{fs, path::PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use clap::Parser;
 
-#[derive(Serialize, Deserialize, Default)]
+use crate::remote::RemoteProcSignature;
+
+#[derive(Deserialize, Default)]
 struct Config {
     target_name: Option<String>,
     payload_path: Option<PathBuf>,
@@ -13,10 +15,11 @@ struct Config {
     paths: Option<Vec<Map>>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+#[derive(Clone, Deserialize, Default)]
 struct Map {
     pub name: String,
     pub symbol: Option<String>,
+    pub signature: Option<RemoteProcSignature>,
 }
 
 impl Config {
@@ -66,6 +69,7 @@ pub struct Options {
 pub struct Identifier {
     pub name: String,
     pub symbol: String,
+    pub signature: RemoteProcSignature,
 }
 
 impl Options {
@@ -115,6 +119,7 @@ impl Options {
                 Identifier {
                     name: name.into(),
                     symbol: x.symbol.clone().unwrap_or(name.into()),
+                    signature: x.signature.unwrap_or_default(),
                 }
             })
             .collect();

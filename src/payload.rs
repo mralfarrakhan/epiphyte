@@ -3,12 +3,13 @@ use std::{collections::HashMap, path::PathBuf};
 use cli_table::{Cell, Style, Table, print_stdout};
 use object::{File, Object};
 
-use crate::config::Identifier;
+use crate::{config::Identifier, remote::RemoteProcSignature};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Metadata {
-    symbol: Option<String>,
-    address: Option<u64>,
+    pub symbol: Option<String>,
+    pub address: Option<u64>,
+    pub signature: Option<RemoteProcSignature>,
 }
 
 impl Metadata {
@@ -37,21 +38,25 @@ where
         })
         .collect();
 
-    let name_map: HashMap<String, String> = procedure_paths
+    let name_map: HashMap<String, (String, RemoteProcSignature)> = procedure_paths
         .into_iter()
-        .map(|i| (i.symbol, i.name))
+        .map(|i| (i.symbol, (i.name, i.signature)))
         .collect();
 
     let mut res = HashMap::with_capacity(symbol_map.len().max(name_map.len()));
 
     for (symbol, &address) in &symbol_map {
-        res.insert(
-            symbol.clone(),
-            Metadata {
-                symbol: name_map.get(symbol).cloned(),
-                address: Some(address),
-            },
-        );
+        match name_map.get(symbol) {
+            Some(v) => res.insert(
+                symbol.clone(),
+                Metadata {
+                    symbol: Some(v.0.clone()),
+                    address: Some(address),
+                    signature: Some(v.1),
+                },
+            ),
+            None => res.insert(symbol.clone(), Default::default()),
+        };
     }
 
     Ok(res)
@@ -68,14 +73,18 @@ pub fn print_symbol_table(symbol: &HashMap<String, Metadata>) -> Result<(), std:
                 Some(a) => format!("{:#x}", a),
                 None => "NOT FOUND".into(),
             };
+            let signature = m
+                .signature
+                .map_or("UNDEFINED".into(), |t| format!("{:?}", t));
 
-            vec![path.cell(), s.cell(), address.cell()]
+            vec![path.cell(), s.cell(), address.cell(), signature.cell()]
         })
         .table()
         .title(vec![
             "Path".cell().bold(true),
             "Symbol".cell().bold(true),
             "Address".cell().bold(true),
+            "Type".cell().bold(true),
         ])
         .bold(true);
 
