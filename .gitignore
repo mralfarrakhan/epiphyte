@@ -2,3 +2,5 @@
 /.vscode
 
 /config.toml
+
+.DS_Store
