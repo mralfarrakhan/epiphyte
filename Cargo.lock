@@ -321,6 +321,7 @@ dependencies = [
  "cli-table",
  "dll-syringe",
  "object 0.37.3",
+ "scopeguard",
  "serde",
  "serde_json",
  "tokio",

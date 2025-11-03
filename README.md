@@ -67,5 +67,4 @@ Available function types and its `signature` value:
 ## To Do
 
 -   Recovery system.
--   String allocator helper.
 -   x86_64 support.

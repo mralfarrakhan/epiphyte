@@ -19,6 +19,7 @@ use dll_syringe::{
     Syringe,
     process::{OwnedProcess, Process},
 };
+use scopeguard::defer;
 use serde_json::json;
 use tokio::{net::TcpListener, runtime::Builder, signal};
 
@@ -69,6 +70,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let syringe = Syringe::for_process(target_process);
         let injected_payload = syringe.inject(payload_path)?;
+
+        defer! {
+            if let Err(e) = syringe.eject(injected_payload) {
+                eprintln!("[ERROR] Payload ejection error:\n{:#?}", e);
+            }
+            println!("[INFO] bye.");
+        }
 
         let procedures: HashMap<_, _> = procedures
             .into_iter()
@@ -184,11 +192,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                         match proc.call(outgoing_msg.get_addr()) {
                             Ok(res) => {
-                                let res = ScopedRemoteString::from_remote(pid.into(), res)?;
-
-                                let s = res.read_remote()?;
-
-                                reply_tx.send(Ok(format!("TACK. {}.", s)))?;
+                                match ScopedRemoteString::from_remote(pid.into(), res)
+                                    .and_then(|v| v.read_remote())
+                                {
+                                    Ok(s) => reply_tx.send(Ok(format!("TACK. {}.", s)))?,
+                                    Err(e) => reply_tx.send(Err(e.to_string()))?,
+                                }
                             }
                             Err(e) => reply_tx.send(Err(e.to_string()))?,
                         }
@@ -211,10 +220,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         } else {
             println!("[INFO] all good, ejecting payload...");
         }
-
-        syringe.eject(injected_payload)?;
-
-        println!("[INFO] bye.")
     } else {
         eprintln!(
             "[ERROR] program whose name contains '{}' doesn't seem to be run...",
