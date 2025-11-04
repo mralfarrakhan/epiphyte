@@ -128,20 +128,20 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let thandle = thread::spawn(move || {
             let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-
             runtime.block_on(async {
+                let timeout = options.timeout;
                 let app = Router::new()
                     .route("/info", get(info))
                     .route(
                         "/execute/{proc}",
                         post(
-                            |Path(proc): Path<String>, payload: MultiPayload| async move {
+                            move |Path(proc): Path<String>, payload: MultiPayload| async move {
                                 let start = Instant::now();
                                 let (reply_tx, reply_rx) = mpsc::channel();
 
                                 cmd_tx.send(((proc, payload), reply_tx)).unwrap();
 
-                                match reply_rx.recv_timeout(Duration::from_millis(500)) {
+                                match reply_rx.recv_timeout(Duration::from_millis(timeout)) {
                                     Ok(Ok(v)) => (
                                         StatusCode::OK,
                                         Json(json!({

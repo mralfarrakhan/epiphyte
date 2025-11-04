@@ -27,7 +27,7 @@ payload_path = "./payload-x86.dll"
 # port for REST server (default: 8070)
 port = 80800
 
-# loop receiver timeout in ms (default: 500)
+# receivers timeout in ms (default: 500)
 timeout = 1000
 
 # simple path where symbol name can be set as path
@@ -66,5 +66,9 @@ Available function types and its `signature` value:
 
 ## To Do
 
--   Recovery system.
--   x86_64 support.
+Sorted by priority:
+
+-   [ ] Backpressure on channel.
+-   [ ] Recovery system.
+-   [ ] x86_64 support.
+-   [ ] String allocation helper.

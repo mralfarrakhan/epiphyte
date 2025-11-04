@@ -12,7 +12,7 @@ fn main() {
         Ok(output) if output.status.success() => {
             from_utf8(&output.stdout).unwrap().trim().to_string()
         }
-        _ => format!("no version info on build"),
+        _ => "no version info on build".to_string(),
     };
 
     println!("cargo:rustc-env=EPIPHYTE_BUILD_VERSION={}", version);
