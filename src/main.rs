@@ -195,7 +195,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 match ScopedRemoteString::from_remote(pid.into(), res)
                                     .and_then(|v| v.read_remote())
                                 {
-                                    Ok(s) => reply_tx.send(Ok(format!("TACK. {}.", s)))?,
+                                    Ok(s) => reply_tx.send(Ok(s))?,
                                     Err(e) => reply_tx.send(Err(e.to_string()))?,
                                 }
                             }
