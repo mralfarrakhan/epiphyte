@@ -5,13 +5,16 @@ use axum::{
     response::IntoResponse,
 };
 use serde::Deserialize;
+use serde_json::Value;
 
 #[derive(Debug, Deserialize)]
-pub struct Text {
-    pub message: String,
+pub struct Json {
+    #[serde(flatten)]
+    pub payload: Value,
 }
+
 pub enum MultiPayload {
-    Text(Text),
+    Json(Json),
     Signal,
 }
 
@@ -52,8 +55,8 @@ where
             return Ok(Self::Signal);
         }
 
-        if let Ok(v) = serde_json::from_slice::<Text>(&bytes) {
-            return Ok(Self::Text(v));
+        if let Ok(v) = serde_json::from_slice::<Json>(&bytes) {
+            return Ok(Self::Json(v));
         }
 
         Err(MultiPayloadRejection::from(

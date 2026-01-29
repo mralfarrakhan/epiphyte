@@ -7,7 +7,9 @@ use serde::Deserialize;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
 use windows::Win32::System::Memory::{MEMORY_BASIC_INFORMATION, VirtualQueryEx};
-use windows::Win32::System::Threading::{PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
+use windows::Win32::System::Threading::{
+    PROCESS_QUERY_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ,
+};
 use windows::Win32::System::{
     Diagnostics::Debug::WriteProcessMemory,
     Memory::{MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE, VirtualAllocEx, VirtualFreeEx},
@@ -82,7 +84,11 @@ impl ScopedRemoteString {
             return Err("Null address".into());
         }
         unsafe {
-            let proc_handle = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, false, pid)?;
+            let proc_handle = OpenProcess(
+                PROCESS_VM_READ | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION,
+                false,
+                pid,
+            )?;
             if proc_handle.is_invalid() {
                 return Err("OpenProcess failed".into());
             }

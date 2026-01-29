@@ -186,9 +186,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                         reply_tx.send(Err("Invalid payload".into()))?;
                     }
                 }
-                Ok(((path, MultiPayload::Text(text)), reply_tx)) => {
+                Ok(((path, MultiPayload::Json(text)), reply_tx)) => {
                     if let Some(RemoteProcContainer::Text(proc)) = procedures.get(&path) {
-                        let outgoing_msg = ScopedRemoteString::new(pid.into(), &text.message)?;
+                        let outgoing_msg =
+                            ScopedRemoteString::new(pid.into(), &text.payload.to_string())?;
 
                         match proc.call(outgoing_msg.get_addr()) {
                             Ok(res) => {

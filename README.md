@@ -72,3 +72,4 @@ Sorted by priority:
 -   [ ] Recovery system.
 -   [ ] x86_64 support.
 -   [ ] String allocation helper.
+-   [x] Real JSON payload on Text.
