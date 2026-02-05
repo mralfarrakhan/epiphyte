@@ -142,20 +142,26 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 cmd_tx.send(((proc, payload), reply_tx)).unwrap();
 
                                 match reply_rx.recv_timeout(Duration::from_millis(timeout)) {
-                                    Ok(Ok(v)) => (
-                                        StatusCode::OK,
-                                        Json(json!({
-                                            "message": v,
-                                            "elapsed_ms": start.elapsed().as_millis(),
-                                        })),
-                                    ),
+                                    Ok(Ok(v)) => {
+                                        if v.starts_with("ERROR:") {
+                                            (StatusCode::NOT_FOUND, Json(json!({"message": v})))
+                                        } else {
+                                            (
+                                                StatusCode::OK,
+                                                Json(json!({
+                                                    "message": v,
+                                                    "elapsed_ms": start.elapsed().as_millis(),
+                                                })),
+                                            )
+                                        }
+                                    }
                                     Ok(Err(e)) => (
                                         StatusCode::INTERNAL_SERVER_ERROR,
-                                        Json(json!({ "error": e })),
+                                        Json(json!({ "message": e })),
                                     ),
                                     Err(r) => (
                                         StatusCode::INTERNAL_SERVER_ERROR,
-                                        Json(json!({ "error": r.to_string() })),
+                                        Json(json!({ "message": r.to_string() })),
                                     ),
                                 }
                             },
