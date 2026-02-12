@@ -1,9 +1,7 @@
-use std::{collections::HashMap, path::PathBuf};
-
+use crate::{config::Identifier, remote::RemoteProcSignature};
 use cli_table::{Cell, Style, Table, print_stdout};
 use object::{File, Object};
-
-use crate::{config::Identifier, remote::RemoteProcSignature};
+use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Debug, Default)]
 pub struct Metadata {

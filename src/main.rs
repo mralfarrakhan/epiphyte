@@ -1,12 +1,14 @@
-use std::{
-    collections::HashMap,
-    error::Error,
-    net::SocketAddr,
-    sync::mpsc,
-    thread,
-    time::{Duration, Instant},
-};
+mod config;
+mod payload;
+mod remote;
+mod requests;
+mod response;
 
+use crate::{
+    remote::{RemoteProcContainer, RemoteProcSignature, ScopedRemoteString},
+    requests::MultiPayload,
+    response::Response,
+};
 use axum::{
     Router,
     extract::Path,
@@ -21,20 +23,16 @@ use dll_syringe::{
 };
 use scopeguard::defer;
 use serde_json::json;
+use std::{
+    collections::HashMap,
+    error::Error,
+    net::SocketAddr,
+    sync::mpsc,
+    thread,
+    time::{Duration, Instant},
+};
 use tokio::{net::TcpListener, runtime::Builder, signal};
 use tracing::{error, info};
-
-use crate::{
-    remote::{RemoteProcContainer, RemoteProcSignature, ScopedRemoteString},
-    requests::MultiPayload,
-    response::Response,
-};
-
-mod config;
-mod payload;
-mod remote;
-mod requests;
-mod response;
 
 fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt()
@@ -154,14 +152,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 {
                                     Ok(v) => {
                                         if v.starts_with("ERROR:") {
-                                            (StatusCode::NOT_FOUND, Json(Response::new(v, &start)))
+                                            (StatusCode::NOT_FOUND, Response::new(v, &start))
                                         } else {
-                                            (StatusCode::OK, Json(Response::new(v, &start)))
+                                            (StatusCode::OK, Response::new(v, &start))
                                         }
                                     }
                                     Err(e) => (
                                         StatusCode::INTERNAL_SERVER_ERROR,
-                                        Json(Response::new(e, &start)),
+                                        Response::new(e, &start),
                                     ),
                                 }
                             },
@@ -218,8 +216,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                             .send(Err("Invalid payload".into()))
                             .unwrap_or_else(channel_error_log);
                     }
-
-                    todo!()
                 }
 
                 Err(mpsc::RecvTimeoutError::Timeout) => {

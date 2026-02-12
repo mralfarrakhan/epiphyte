@@ -1,9 +1,8 @@
+use dll_syringe::rpc::RemoteRawProcedure as Proc;
+use serde::Deserialize;
 use std::cmp;
 use std::ffi::{CString, c_void};
 use std::mem::MaybeUninit;
-
-use dll_syringe::rpc::RemoteRawProcedure as Proc;
-use serde::Deserialize;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
 use windows::Win32::System::Memory::{MEMORY_BASIC_INFORMATION, VirtualQueryEx};

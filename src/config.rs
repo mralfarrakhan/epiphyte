@@ -1,10 +1,8 @@
-use std::{fs, path::PathBuf};
-
-use serde::Deserialize;
-
-use clap::Parser;
-
 use crate::remote::RemoteProcSignature;
+use clap::Parser;
+use serde::Deserialize;
+use std::{fs, path::PathBuf};
+use tracing::{error, warn};
 
 #[derive(Deserialize, Default)]
 struct Config {
@@ -77,15 +75,15 @@ impl Options {
         let cli = Cli::parse();
 
         let config_path = cli.config_path.unwrap_or_else(|| {
-            println!("[WARNING] configuration file path is not set.");
-            println!("[WARNING] looking for ./config.toml.");
+            warn!("configuration file path is not set.");
+            warn!("looking for ./config.toml.");
             "config.toml".into()
         });
         let config = match Config::read_config(&config_path) {
             Ok(v) => v,
             Err(err) => {
-                eprintln!(
-                    "[ERROR] cannot read config in '{}': {:?}.",
+                error!(
+                    "cannot read config in '{}': {:?}.",
                     config_path.display(),
                     err
                 );
@@ -108,7 +106,7 @@ impl Options {
         let paths = match config.paths {
             Some(v) => v,
             None => {
-                println!("[WARNING] no paths defined in configuration file.");
+                warn!("no paths defined in configuration file.");
                 Default::default()
             }
         };
