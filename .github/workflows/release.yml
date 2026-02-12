@@ -19,7 +19,7 @@ jobs:
             - name: Cache
               uses: Swatinem/rust-cache@v2
             - name: Build
-              run: cargo build --release --lock --verbose
+              run: cargo build --release --locked --verbose
             - name: Release
               uses: softprops/action-gh-release@v2
               with:
