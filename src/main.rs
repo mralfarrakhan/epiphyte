@@ -22,18 +22,26 @@ use dll_syringe::{
 use scopeguard::defer;
 use serde_json::json;
 use tokio::{net::TcpListener, runtime::Builder, signal};
+use tracing::{error, info};
 
 use crate::{
     remote::{RemoteProcContainer, RemoteProcSignature, ScopedRemoteString},
     requests::MultiPayload,
+    response::Response,
 };
 
 mod config;
 mod payload;
 mod remote;
 mod requests;
+mod response;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    tracing_subscriber::fmt()
+        .with_file(true)
+        .with_line_number(true)
+        .init();
+
     let options = config::Options::load()?;
     let target_name = options.target_name;
     let payload_path = options.payload_path;
@@ -55,17 +63,15 @@ fn main() -> Result<(), Box<dyn Error>> {
             .unwrap_or("UNKNOWN EXEC PATH")
             .to_string();
 
-        println!(
-            "[INFO] injected process base name: {}, path: {}, pid: {}.",
+        info!(
+            "injected process base name: {}, path: {}, pid: {}",
             base_name, exec_path, pid
         );
 
-        if options.is_verbose {
-            println!();
-            if let Err(e) = payload::print_symbol_table(&procedures) {
-                eprintln!("[ERROR] failed to print symbols table: {}", e);
-            }
-            println!();
+        if options.is_verbose
+            && let Err(e) = payload::print_symbol_table(&procedures)
+        {
+            error!("failed to print symbol table: {:?}", e);
         }
 
         let syringe = Syringe::for_process(target_process);
@@ -73,9 +79,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         defer! {
             if let Err(e) = syringe.eject(injected_payload) {
-                eprintln!("[ERROR] Payload ejection error:\n{:#?}", e);
+                error!("payload ejection error: {:?}", e);
             }
-            println!("[INFO] bye.");
+            info!("bye.");
         }
 
         let procedures: HashMap<_, _> = procedures
@@ -101,10 +107,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             })
             .collect();
 
-        println!(
-            "[INFO] REST procedure call available on http://localhost:{}/",
-            port,
-        );
+        info!("REST procedure call available on http://localhost:{}", port);
 
         type Request = ((String, MultiPayload), mpsc::Sender<Result<String, String>>);
         let (cmd_tx, cmd_rx) = mpsc::channel::<Request>();
@@ -128,7 +131,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let thandle = thread::spawn(move || {
             let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-            runtime.block_on(async {
+            let http_runtime_exit = runtime.block_on(async {
                 let timeout = options.timeout;
                 let app = Router::new()
                     .route("/info", get(info))
@@ -139,29 +142,26 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 let start = Instant::now();
                                 let (reply_tx, reply_rx) = mpsc::channel();
 
-                                cmd_tx.send(((proc, payload), reply_tx)).unwrap();
-
-                                match reply_rx.recv_timeout(Duration::from_millis(timeout)) {
-                                    Ok(Ok(v)) => {
+                                match cmd_tx
+                                    .send(((proc, payload), reply_tx))
+                                    .map_err(|e| e.to_string())
+                                    .and_then(|_| {
+                                        reply_rx
+                                            .recv_timeout(Duration::from_millis(timeout))
+                                            .map_err(|e| e.to_string())
+                                    })
+                                    .flatten()
+                                {
+                                    Ok(v) => {
                                         if v.starts_with("ERROR:") {
-                                            (StatusCode::NOT_FOUND, Json(json!({"message": v})))
+                                            (StatusCode::NOT_FOUND, Json(Response::new(v, &start)))
                                         } else {
-                                            (
-                                                StatusCode::OK,
-                                                Json(json!({
-                                                    "message": v,
-                                                    "elapsed_ms": start.elapsed().as_millis(),
-                                                })),
-                                            )
+                                            (StatusCode::OK, Json(Response::new(v, &start)))
                                         }
                                     }
-                                    Ok(Err(e)) => (
+                                    Err(e) => (
                                         StatusCode::INTERNAL_SERVER_ERROR,
-                                        Json(json!({ "message": e })),
-                                    ),
-                                    Err(r) => (
-                                        StatusCode::INTERNAL_SERVER_ERROR,
-                                        Json(json!({ "message": r.to_string() })),
+                                        Json(Response::new(e, &start)),
                                     ),
                                 }
                             },
@@ -169,14 +169,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                     )
                     .fallback(fallback);
 
-                let addr: SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
-                let listener = TcpListener::bind(addr).await.unwrap();
+                let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
+                let listener = TcpListener::bind(addr).await?;
 
                 serve(listener, app)
                     .with_graceful_shutdown(shutdown_signal())
-                    .await
-                    .unwrap();
+                    .await?;
+
+                Ok::<_, Box<dyn Error>>(())
             });
+
+            if let Err(e) = http_runtime_exit {
+                error!("http runtime exit with error: {:?}", e);
+            }
         });
 
         loop {
@@ -184,33 +189,37 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Ok(((path, MultiPayload::Signal), reply_tx)) => {
                     if let Some(RemoteProcContainer::Signal(proc)) = procedures.get(&path) {
                         if let Err(e) = proc.call() {
-                            reply_tx.send(Err(e.to_string()))?;
+                            reply_tx
+                                .send(Err(e.to_string()))
+                                .unwrap_or_else(channel_error_log);
                         } else {
-                            reply_tx.send(Ok("SACK".into()))?;
+                            reply_tx
+                                .send(Ok("ACK".into()))
+                                .unwrap_or_else(channel_error_log);
                         }
                     } else {
-                        reply_tx.send(Err("Invalid payload".into()))?;
+                        reply_tx
+                            .send(Err("Invalid payload".into()))
+                            .unwrap_or_else(channel_error_log);
                     }
                 }
                 Ok(((path, MultiPayload::Json(text)), reply_tx)) => {
                     if let Some(RemoteProcContainer::Text(proc)) = procedures.get(&path) {
-                        let outgoing_msg =
-                            ScopedRemoteString::new(pid.into(), &text.payload.to_string())?;
+                        let exchange =
+                            ScopedRemoteString::new(pid.into(), &text.payload.to_string())
+                                .and_then(|s| proc.call(s.get_addr()).map_err(|e| e.into()))
+                                .and_then(|u| ScopedRemoteString::from_remote(pid.into(), u))
+                                .and_then(|v| v.read_remote())
+                                .map_err(|e| e.to_string());
 
-                        match proc.call(outgoing_msg.get_addr()) {
-                            Ok(res) => {
-                                match ScopedRemoteString::from_remote(pid.into(), res)
-                                    .and_then(|v| v.read_remote())
-                                {
-                                    Ok(s) => reply_tx.send(Ok(s))?,
-                                    Err(e) => reply_tx.send(Err(e.to_string()))?,
-                                }
-                            }
-                            Err(e) => reply_tx.send(Err(e.to_string()))?,
-                        }
+                        reply_tx.send(exchange).unwrap_or_else(channel_error_log);
                     } else {
-                        reply_tx.send(Err("Invalid payload".into()))?;
+                        reply_tx
+                            .send(Err("Invalid payload".into()))
+                            .unwrap_or_else(channel_error_log);
                     }
+
+                    todo!()
                 }
 
                 Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -223,15 +232,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         if let Err(e) = thandle.join() {
-            Err(format!("[WARNING] axum thread closed with panic: {:#?}", e))?;
+            error!("axum thread closed with panic: {:?}", e);
         } else {
-            println!("[INFO] all good, ejecting payload...");
+            info!("all good, ejecting payload...");
         }
     } else {
-        eprintln!(
-            "[ERROR] program whose name contains '{}' doesn't seem to be run...",
-            target_name
-        );
+        error!("'{}' is not running.", target_name);
     }
 
     Ok(())
@@ -250,4 +256,11 @@ async fn shutdown_signal() {
         _ = ctrl_c => {},
         _ = terminate => {},
     }
+}
+
+fn channel_error_log<E>(e: E)
+where
+    E: std::fmt::Display,
+{
+    error!("channel error: {}", e);
 }

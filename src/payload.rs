@@ -88,6 +88,5 @@ pub fn print_symbol_table(symbol: &HashMap<String, Metadata>) -> Result<(), std:
         ])
         .bold(true);
 
-    println!("[INFO] Symbol Table");
     print_stdout(t)
 }
