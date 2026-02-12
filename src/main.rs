@@ -118,15 +118,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             }))
         };
 
-        let fallback = async |uri: Uri| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "message": format!("'{uri}' not found")
-                })),
-            )
-        };
-
         let thandle = thread::spawn(move || {
             let runtime = Builder::new_current_thread().enable_all().build().unwrap();
             let http_runtime_exit = runtime.block_on(async {
@@ -152,20 +143,25 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 {
                                     Ok(v) => {
                                         if v.starts_with("ERROR:") {
-                                            (StatusCode::NOT_FOUND, Response::new(v, &start))
+                                            (StatusCode::NOT_FOUND, Response::new(v, Some(&start)))
                                         } else {
-                                            (StatusCode::OK, Response::new(v, &start))
+                                            (StatusCode::OK, Response::new(v, Some(&start)))
                                         }
                                     }
                                     Err(e) => (
                                         StatusCode::INTERNAL_SERVER_ERROR,
-                                        Response::new(e, &start),
+                                        Response::new(e, Some(&start)),
                                     ),
                                 }
                             },
                         ),
                     )
-                    .fallback(fallback);
+                    .fallback(async |uri: Uri| {
+                        (
+                            StatusCode::NOT_FOUND,
+                            Response::new(format!("'{}' not found", uri), None),
+                        )
+                    });
 
                 let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
                 let listener = TcpListener::bind(addr).await?;

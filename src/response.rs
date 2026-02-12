@@ -9,10 +9,10 @@ pub struct Response {
 }
 
 impl Response {
-    pub fn new(message: String, timer: &Instant) -> Json<Self> {
+    pub fn new(message: String, timer: Option<&Instant>) -> Json<Self> {
         Json(Self {
             message,
-            elapsed: timer.elapsed().as_millis(),
+            elapsed: timer.map(|t| t.elapsed().as_millis()).unwrap_or_default(),
         })
     }
 }
