@@ -1,10 +1,12 @@
 mod config;
+mod injector;
 mod payload;
 mod remote;
 mod requests;
 mod response;
 
 use crate::{
+    injector::Injector,
     remote::{RemoteProcContainer, RemoteProcSignature, ScopedRemoteString},
     requests::MultiPayload,
     response::Response,
@@ -17,11 +19,7 @@ use axum::{
     routing::{get, post},
     serve,
 };
-use dll_syringe::{
-    Syringe,
-    process::{OwnedProcess, Process},
-};
-use scopeguard::defer;
+use dll_syringe::process::{OwnedProcess, Process};
 use serde_json::json;
 use std::{
     collections::HashMap,
@@ -72,15 +70,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             error!("failed to print symbol table: {:?}", e);
         }
 
-        let syringe = Syringe::for_process(target_process);
-        let injected_payload = syringe.inject(payload_path)?;
-
-        defer! {
-            if let Err(e) = syringe.eject(injected_payload) {
-                error!("payload ejection error: {:?}", e);
-            }
-            info!("bye.");
-        }
+        let injective = Injector::new(target_process, payload_path)?;
 
         let procedures: HashMap<_, _> = procedures
             .into_iter()
@@ -91,10 +81,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 {
                     let procedure = match sig {
                         RemoteProcSignature::Signal => RemoteProcContainer::Signal(unsafe {
-                            syringe.get_raw_procedure(injected_payload, &s).ok()??
+                            injective.get_raw_procedure(&s).ok()??
                         }),
                         RemoteProcSignature::Text => RemoteProcContainer::Text(unsafe {
-                            syringe.get_raw_procedure(injected_payload, &s).ok()??
+                            injective.get_raw_procedure(&s).ok()??
                         }),
                     };
 
@@ -226,7 +216,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         if let Err(e) = thandle.join() {
             error!("axum thread closed with panic: {:?}", e);
         } else {
-            info!("all good, ejecting payload...");
+            info!("bye.");
         }
     } else {
         error!("'{}' is not running.", target_name);
