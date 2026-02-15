@@ -7,7 +7,7 @@ mod response;
 
 use crate::{
     injector::Injector,
-    remote::{RemoteProcContainer, RemoteProcSignature, ScopedRemoteString},
+    remote::{RemoteProcContainer, ScopedRemoteString},
     requests::MultiPayload,
     response::Response,
 };
@@ -22,15 +22,15 @@ use axum::{
 use dll_syringe::process::{OwnedProcess, Process};
 use serde_json::json;
 use std::{
-    collections::HashMap,
     error::Error,
     net::SocketAddr,
+    ops::Not,
     sync::mpsc,
     thread,
     time::{Duration, Instant},
 };
 use tokio::{net::TcpListener, runtime::Builder, signal};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt()
@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let port = options.port;
     let paths = options.paths;
 
-    let procedures = payload::analyze_payload(&payload_path, paths)?;
+    let procedure_table = payload::analyze_payload(&payload_path, paths)?;
 
     if let Some(target_process) = OwnedProcess::find_first_by_name(&target_name) {
         let pid = target_process.pid()?;
@@ -65,35 +65,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         );
 
         if options.is_verbose
-            && let Err(e) = payload::print_symbol_table(&procedures)
+            && let Err(e) = payload::print_symbol_table(&procedure_table)
         {
             error!("failed to print symbol table: {:?}", e);
         }
 
-        let injective = Injector::new(target_process, payload_path)?;
+        let mut injective = Injector::new(target_process, payload_path, procedure_table)?;
 
-        let procedures: HashMap<_, _> = procedures
-            .into_iter()
-            .filter_map(|(s, m)| {
-                if s != "DllMain"
-                    && m.is_valid()
-                    && let Some(sig) = m.signature
-                {
-                    let procedure = match sig {
-                        RemoteProcSignature::Signal => RemoteProcContainer::Signal(unsafe {
-                            injective.get_raw_procedure(&s).ok()??
-                        }),
-                        RemoteProcSignature::Text => RemoteProcContainer::Text(unsafe {
-                            injective.get_raw_procedure(&s).ok()??
-                        }),
-                    };
-
-                    Some((s, procedure))
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let mut procedures = injective.regenerate();
 
         info!("REST procedure call available on http://localhost:{}", port);
 
@@ -133,15 +112,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 {
                                     Ok(v) => {
                                         if v.starts_with("ERROR:") {
+                                            error!("respons with error prefix: {}", v);
                                             (StatusCode::NOT_FOUND, Response::new(v, Some(&start)))
                                         } else {
                                             (StatusCode::OK, Response::new(v, Some(&start)))
                                         }
                                     }
-                                    Err(e) => (
-                                        StatusCode::INTERNAL_SERVER_ERROR,
-                                        Response::new(e, Some(&start)),
-                                    ),
+                                    Err(e) => {
+                                        error!("internal error: {}", e);
+                                        (
+                                            StatusCode::INTERNAL_SERVER_ERROR,
+                                            Response::new(e, Some(&start)),
+                                        )
+                                    }
                                 }
                             },
                         ),
@@ -190,11 +173,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Ok(((path, MultiPayload::Json(text)), reply_tx)) => {
                     if let Some(RemoteProcContainer::Text(proc)) = procedures.get(&path) {
                         let exchange =
-                            ScopedRemoteString::new(pid.into(), &text.payload.to_string())
+                            ScopedRemoteString::new(injective.pid(), &text.payload.to_string())
+                                .inspect_err(|e| error!("0: {}", e))
                                 .and_then(|s| proc.call(s.get_addr()).map_err(|e| e.into()))
-                                .and_then(|u| ScopedRemoteString::from_remote(pid.into(), u))
+                                .inspect_err(|e| error!("1: {}", e))
+                                .and_then(|u| ScopedRemoteString::from_remote(injective.pid(), u))
+                                .inspect_err(|e| error!("2: {}", e))
                                 .and_then(|v| v.read_remote())
-                                .map_err(|e| e.to_string());
+                                .inspect_err(|e| error!("3: {}", e))
+                                .map_err(|e| e.to_string())
+                                .inspect_err(|e| error!("remote string write error: {}", e));
 
                         reply_tx.send(exchange).unwrap_or_else(channel_error_log);
                     } else {
@@ -205,6 +193,28 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
 
                 Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if injective
+                        .is_alive()
+                        .inspect_err(|e| {
+                            error!("health checking error: {}", e);
+                            info!("killing process...");
+                            if let Err(e) = injective.kill() {
+                                error!("error killing process: {}", e);
+                            }
+                        })
+                        .unwrap_or_default()
+                        .not()
+                    {
+                        warn!("process is dead. reviving...");
+                        match injective.renew().map(|_| injective.regenerate()) {
+                            Ok(new_procedures) => {
+                                procedures = new_procedures;
+                                info!("process is revived")
+                            }
+                            Err(e) => error!("recovery error: {}", e),
+                        }
+                    }
+
                     if thandle.is_finished() {
                         break;
                     }

@@ -69,7 +69,5 @@ Available function types and its `signature` value:
 Sorted by priority:
 
 -   [ ] Backpressure on channel.
--   [ ] Recovery system.
 -   [ ] x86_64 support.
 -   [ ] String allocation helper.
--   [x] Real JSON payload on Text.
