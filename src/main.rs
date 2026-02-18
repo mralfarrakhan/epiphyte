@@ -145,15 +145,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 {
                                     Ok(v) => {
                                         if v.starts_with("ERROR:") {
+                                            error!("respons with error prefix: {}", v);
                                             (StatusCode::NOT_FOUND, Response::new(v, Some(&start)))
                                         } else {
                                             (StatusCode::OK, Response::new(v, Some(&start)))
                                         }
                                     }
-                                    Err(e) => (
-                                        StatusCode::INTERNAL_SERVER_ERROR,
-                                        Response::new(e, Some(&start)),
-                                    ),
+                                    Err(e) => {
+                                        error!("internal error: {}", e);
+                                        (
+                                            StatusCode::INTERNAL_SERVER_ERROR,
+                                            Response::new(e, Some(&start)),
+                                        )
+                                    }
                                 }
                             },
                         ),
