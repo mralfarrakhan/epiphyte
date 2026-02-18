@@ -36,6 +36,8 @@ use tracing::{error, info};
 use tracing_subscriber::fmt::time::OffsetTime;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    console::set_colors_enabled(true);
+
     tracing_subscriber::fmt()
         .with_file(true)
         .with_line_number(true)
