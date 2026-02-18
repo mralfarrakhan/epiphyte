@@ -74,8 +74,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let mut procedures = injective.regenerate();
 
-        info!("REST procedure call available on http://localhost:{}", port);
-
         type Request = ((String, MultiPayload), mpsc::Sender<Result<String, String>>);
         let (cmd_tx, cmd_rx) = mpsc::channel::<Request>();
 
@@ -151,6 +149,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         });
 
+        info!("REST procedure call available on http://localhost:{}", port);
+
         loop {
             match cmd_rx.recv_timeout(Duration::from_millis(options.timeout)) {
                 Ok(((path, MultiPayload::Signal), reply_tx)) => {
@@ -174,13 +174,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                     if let Some(RemoteProcContainer::Text(proc)) = procedures.get(&path) {
                         let exchange =
                             ScopedRemoteString::new(injective.pid(), &text.payload.to_string())
-                                .inspect_err(|e| error!("0: {}", e))
                                 .and_then(|s| proc.call(s.get_addr()).map_err(|e| e.into()))
-                                .inspect_err(|e| error!("1: {}", e))
                                 .and_then(|u| ScopedRemoteString::from_remote(injective.pid(), u))
-                                .inspect_err(|e| error!("2: {}", e))
                                 .and_then(|v| v.read_remote())
-                                .inspect_err(|e| error!("3: {}", e))
                                 .map_err(|e| e.to_string())
                                 .inspect_err(|e| error!("remote string write error: {}", e));
 
@@ -245,7 +241,9 @@ async fn shutdown_signal() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => {},
+        _ = ctrl_c => {
+            info!("ctrl+c");
+        },
         _ = terminate => {},
     }
 }
