@@ -33,11 +33,13 @@ use std::{
 };
 use tokio::{net::TcpListener, runtime::Builder, signal};
 use tracing::{error, info};
+use tracing_subscriber::fmt::time::OffsetTime;
 
 fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt()
         .with_file(true)
         .with_line_number(true)
+        .with_timer(OffsetTime::local_rfc_3339()?)
         .init();
 
     let options = config::Options::load()?;
