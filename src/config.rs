@@ -11,6 +11,7 @@ struct Config {
     port: Option<u16>,
     timeout: Option<u64>,
     paths: Option<Vec<Map>>,
+    autorecover: Option<bool>,
 }
 
 #[derive(Clone, Deserialize, Default)]
@@ -51,6 +52,10 @@ struct Cli {
     /// show additional info
     #[arg(short, long)]
     verbose: bool,
+
+    /// enable autorecovery
+    #[arg(short, long)]
+    autorecover: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -61,6 +66,7 @@ pub struct Options {
     pub timeout: u64,
     pub paths: Vec<Identifier>,
     pub is_verbose: bool,
+    pub enable_autorecover: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -123,6 +129,7 @@ impl Options {
             .collect();
 
         let is_verbose = cli.verbose;
+        let enable_autorecover = config.autorecover.unwrap_or(cli.autorecover);
 
         let res = Self {
             target_name,
@@ -131,6 +138,7 @@ impl Options {
             timeout,
             paths,
             is_verbose,
+            enable_autorecover,
         };
 
         Ok(res)

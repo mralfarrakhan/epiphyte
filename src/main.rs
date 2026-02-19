@@ -31,11 +31,15 @@ use std::{
 };
 use tokio::{net::TcpListener, runtime::Builder, signal};
 use tracing::{error, info, warn};
+use tracing_subscriber::fmt::time::OffsetTime;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    console::set_colors_enabled(true);
+
     tracing_subscriber::fmt()
         .with_file(true)
         .with_line_number(true)
+        .with_timer(OffsetTime::local_rfc_3339()?)
         .init();
 
     let options = config::Options::load()?;
@@ -89,6 +93,34 @@ fn main() -> Result<(), Box<dyn Error>> {
             let runtime = Builder::new_current_thread().enable_all().build().unwrap();
             let http_runtime_exit = runtime.block_on(async {
                 let timeout = options.timeout;
+                let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
+                let cmd_tx_init = cmd_tx.clone();
+
+                let listener = match TcpListener::bind(addr).await {
+                    Ok(v) => Ok(v),
+                    Err(e) => {
+                        warn!("failure in binding to {}: {}", addr, e);
+                        info!("triggering process restart");
+
+                        let (reply_tx, reply_rx) = mpsc::channel();
+
+                        if let Err(e) = cmd_tx_init
+                            .send((("".into(), MultiPayload::Revive), reply_tx))
+                            .map_err(|e| e.to_string())
+                            .and_then(|_| {
+                                reply_rx
+                                    .recv_timeout(Duration::from_mins(5))
+                                    .map_err(|e| e.to_string())
+                            })
+                            .flatten()
+                        {
+                            error!("error triggering process restart in 5 minutes: {}", e);
+                        }
+
+                        TcpListener::bind(addr).await
+                    }
+                }?;
+
                 let app = Router::new()
                     .route("/info", get(info))
                     .route(
@@ -133,9 +165,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                             Response::new(format!("'{}' not found", uri), None),
                         )
                     });
-
-                let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
-                let listener = TcpListener::bind(addr).await?;
 
                 serve(listener, app)
                     .with_graceful_shutdown(shutdown_signal())
@@ -187,19 +216,36 @@ fn main() -> Result<(), Box<dyn Error>> {
                             .unwrap_or_else(channel_error_log);
                     }
                 }
+                Ok(((_, MultiPayload::Revive), reply_tx)) => {
+                    if let Err(e) = injective.kill() {
+                        error!("error killing process: {}", e);
+                    }
 
+                    match injective.renew().map(|_| injective.regenerate()) {
+                        Ok(new_procedures) => {
+                            procedures = new_procedures;
+                            info!("process is revived");
+                            reply_tx.send(Ok("".into())).unwrap_or_else(channel_error_log);
+                        }
+                        Err(e) => {
+                            error!("recovery error: {}", e);
+                            reply_tx.send(Err(e.to_string())).unwrap_or_else(channel_error_log);
+                        },
+                    }
+                }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                    if injective
-                        .is_alive()
-                        .inspect_err(|e| {
-                            error!("health checking error: {}", e);
-                            info!("killing process...");
-                            if let Err(e) = injective.kill() {
-                                error!("error killing process: {}", e);
-                            }
-                        })
-                        .unwrap_or_default()
-                        .not()
+                    if options.enable_autorecover
+                        && injective
+                            .is_alive()
+                            .inspect_err(|e| {
+                                error!("health checking error: {}", e);
+                                info!("killing process...");
+                                if let Err(e) = injective.kill() {
+                                    error!("error killing process: {}", e);
+                                }
+                            })
+                            .unwrap_or_default()
+                            .not()
                     {
                         warn!("process is dead. reviving...");
                         match injective.renew().map(|_| injective.regenerate()) {
