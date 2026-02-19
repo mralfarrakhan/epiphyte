@@ -216,9 +216,22 @@ fn main() -> Result<(), Box<dyn Error>> {
                             .unwrap_or_else(channel_error_log);
                     }
                 }
-                Ok(((_, MultiPayload::Revive), _)) => {
-                    warn!("not this far");
-                    todo!()
+                Ok(((_, MultiPayload::Revive), reply_tx)) => {
+                    if let Err(e) = injective.kill() {
+                        error!("error killing process: {}", e);
+                    }
+
+                    match injective.renew().map(|_| injective.regenerate()) {
+                        Ok(new_procedures) => {
+                            procedures = new_procedures;
+                            info!("process is revived");
+                            reply_tx.send(Ok("".into())).unwrap_or_else(channel_error_log);
+                        }
+                        Err(e) => {
+                            error!("recovery error: {}", e);
+                            reply_tx.send(Err(e.to_string())).unwrap_or_else(channel_error_log);
+                        },
+                    }
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     if options.enable_autorecover
