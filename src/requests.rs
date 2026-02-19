@@ -16,6 +16,7 @@ pub struct Json {
 pub enum MultiPayload {
     Json(Json),
     Signal,
+    Revive,
 }
 
 #[derive(Debug)]

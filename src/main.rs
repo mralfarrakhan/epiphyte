@@ -74,8 +74,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let mut procedures = injective.regenerate();
 
-        info!("REST procedure call available on http://localhost:{}", port);
-
         type Request = ((String, MultiPayload), mpsc::Sender<Result<String, String>>);
         let (cmd_tx, cmd_rx) = mpsc::channel::<Request>();
 
@@ -91,6 +89,34 @@ fn main() -> Result<(), Box<dyn Error>> {
             let runtime = Builder::new_current_thread().enable_all().build().unwrap();
             let http_runtime_exit = runtime.block_on(async {
                 let timeout = options.timeout;
+                let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
+                let cmd_tx_init = cmd_tx.clone();
+
+                let listener = match TcpListener::bind(addr).await {
+                    Ok(v) => Ok(v),
+                    Err(e) => {
+                        warn!("failure in binding to {}: {}", addr, e);
+                        info!("triggering process restart");
+
+                        let (reply_tx, reply_rx) = mpsc::channel();
+
+                        if let Err(e) = cmd_tx_init
+                            .send((("".into(), MultiPayload::Revive), reply_tx))
+                            .map_err(|e| e.to_string())
+                            .and_then(|_| {
+                                reply_rx
+                                    .recv_timeout(Duration::from_mins(5))
+                                    .map_err(|e| e.to_string())
+                            })
+                            .flatten()
+                        {
+                            error!("error triggering process restart in 5 minutes: {}", e);
+                        }
+
+                        TcpListener::bind(addr).await
+                    }
+                }?;
+
                 let app = Router::new()
                     .route("/info", get(info))
                     .route(
@@ -136,9 +162,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                         )
                     });
 
-                let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
-                let listener = TcpListener::bind(addr).await?;
-
                 serve(listener, app)
                     .with_graceful_shutdown(shutdown_signal())
                     .await?;
@@ -150,6 +173,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 error!("http runtime exit with error: {:?}", e);
             }
         });
+
+        info!("REST procedure call available on http://localhost:{}", port);
 
         loop {
             match cmd_rx.recv_timeout(Duration::from_millis(options.timeout)) {
@@ -174,13 +199,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                     if let Some(RemoteProcContainer::Text(proc)) = procedures.get(&path) {
                         let exchange =
                             ScopedRemoteString::new(injective.pid(), &text.payload.to_string())
-                                .inspect_err(|e| error!("0: {}", e))
                                 .and_then(|s| proc.call(s.get_addr()).map_err(|e| e.into()))
-                                .inspect_err(|e| error!("1: {}", e))
                                 .and_then(|u| ScopedRemoteString::from_remote(injective.pid(), u))
-                                .inspect_err(|e| error!("2: {}", e))
                                 .and_then(|v| v.read_remote())
-                                .inspect_err(|e| error!("3: {}", e))
                                 .map_err(|e| e.to_string())
                                 .inspect_err(|e| error!("remote string write error: {}", e));
 
@@ -191,19 +212,23 @@ fn main() -> Result<(), Box<dyn Error>> {
                             .unwrap_or_else(channel_error_log);
                     }
                 }
-
+                Ok(((_, MultiPayload::Revive), _)) => {
+                    warn!("not this far");
+                    todo!()
+                }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                    if injective
-                        .is_alive()
-                        .inspect_err(|e| {
-                            error!("health checking error: {}", e);
-                            info!("killing process...");
-                            if let Err(e) = injective.kill() {
-                                error!("error killing process: {}", e);
-                            }
-                        })
-                        .unwrap_or_default()
-                        .not()
+                    if options.enable_autorecover
+                        && injective
+                            .is_alive()
+                            .inspect_err(|e| {
+                                error!("health checking error: {}", e);
+                                info!("killing process...");
+                                if let Err(e) = injective.kill() {
+                                    error!("error killing process: {}", e);
+                                }
+                            })
+                            .unwrap_or_default()
+                            .not()
                     {
                         warn!("process is dead. reviving...");
                         match injective.renew().map(|_| injective.regenerate()) {
