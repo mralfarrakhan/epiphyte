@@ -68,6 +68,5 @@ Available function types and its `signature` value:
 
 Sorted by priority:
 
--   [ ] Backpressure on channel.
 -   [ ] x86_64 support.
 -   [ ] String allocation helper.
