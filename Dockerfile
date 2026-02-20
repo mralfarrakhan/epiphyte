@@ -10,10 +10,15 @@ RUN apt-get update && \
     openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
-RUN rustup target add i686-pc-windows-gnu
+WORKDIR /workspace
 
 ENV CARGO_BUILD_TARGET=i686-pc-windows-gnu
 
-WORKDIR /workspace
+RUN rustup target add i686-pc-windows-gnu \
+    --toolchain nightly-2025-08-11
+
+RUN rustup toolchain install nightly-2025-08-11 \
+    --component clippy \
+    --component rustfmt
 
 CMD ["/bin/bash"]
